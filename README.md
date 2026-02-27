@@ -219,13 +219,15 @@ git clone https://github.com/Xwen0857/agent-orchestrator.git
 cd agent-orchestrator
 ```
 
-### Install the Plugin Into an OpenClaw Host
+### Install into OpenClaw
 
-Clone OpenClaw separately, then link this plugin into that host:
+OpenClaw is the external host runtime for this project. Clone OpenClaw separately, then use [`scripts/install_openclaw_plugin.sh`](./scripts/install_openclaw_plugin.sh) to link this plugin into that host:
 
 ```bash
 bash scripts/install_openclaw_plugin.sh /path/to/openclaw
 ```
+
+The installer creates a symlink from this repository's `extensions/orchestrator-dashboard` package into the target OpenClaw checkout, which keeps local plugin changes live during development.
 
 ### Validate the Plugin Layer
 
