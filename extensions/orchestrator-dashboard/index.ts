@@ -1892,11 +1892,17 @@ const orchestratorDashboardPlugin = {
       await writeJsonAtomic(paths.pathState, next);
     };
 
-    const resolveConversationSessionKey = (input: {
-      sessionKey?: string;
-      commandTargetSessionKey?: string;
-    }): string => {
-      return (input.commandTargetSessionKey ?? input.sessionKey ?? "").trim();
+    const resolveConversationSessionKey = (input: unknown): string => {
+      if (!input || typeof input !== "object") {
+        return "";
+      }
+      const record = input as Record<string, unknown>;
+      const commandTargetSessionKey =
+        typeof record.commandTargetSessionKey === "string"
+          ? record.commandTargetSessionKey
+          : "";
+      const sessionKey = typeof record.sessionKey === "string" ? record.sessionKey : "";
+      return (commandTargetSessionKey || sessionKey).trim();
     };
 
     const sessionFileStem = (sessionKey: string): string => {
