@@ -1,0 +1,87 @@
+.DS_Store
+.vscode/
+.idea/
+
+# Local environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Local OpenClaw state and plugin runtime data
+.openclaw/
+.openclaw-state/
+
+# Node/build outputs
+node_modules/
+dist/
+build/
+coverage/
+
+# Local secrets and overrides
+.env
+.env.*
+templates/coordination/orchestrator/agent_runtime.local.json
+
+# Orchestrator runtime/generated state
+templates/coordination/orchestrator/requests/
+templates/coordination/orchestrator/sessions/
+templates/coordination/orchestrator/dashboard.json
+templates/coordination/orchestrator/system-health.json
+templates/coordination/orchestrator/.orchestrate-runner.lock
+templates/coordination/orchestrator/external-runner.log
+templates/coordination/security/*.ndjson
+
+# Runtime task artifacts
+templates/coordination/tasks/task_folders/*
+!templates/coordination/tasks/task_folders/_task_id_
+!templates/coordination/tasks/task_folders/_task_id_/**
+templates/coordination/tasks/archive/
+templates/coordination/tasks/worker_tasks/
+templates/coordination/tasks/subchecklists/
+templates/coordination/tasks/scheduler_queue_test/
+runtime/workdomains/
+projects/*/runs/
+
+# Generated orchestrator reports/state
+templates/coordination/orchestrator/.external-runner.state.json
+templates/coordination/orchestrator/*.log
+templates/coordination/orchestrator/keeper-report.json
+templates/coordination/orchestrator/keeper-report.md
+templates/coordination/orchestrator/phase*.json
+templates/coordination/orchestrator/phase*.md
+templates/coordination/orchestrator/YYYYMMDD-HH.md
+
+# Generated planner history snapshots
+templates/coordination/planner/config/history/rollback-pre-*.md
+templates/coordination/planner/config/history/versions.ndjson
+
+# Generated audit/runtime records
+templates/coordination/audit/approvals/APR-*.md
+templates/coordination/audit/reports/
+templates/coordination/tasks/completed_context.latest.json
+templates/coordination/tasks/completed_context.ndjson
+templates/coordination/worker_lifecycle/*.md
+!templates/coordination/worker_lifecycle/example_lifecycle.md
+templates/coordination/workers/worker_*_worker.md
+templates/coordination/workers/worker_*_delivery.ndjson
+
+# Webapp generated data
+orchestrator-webapp/backend/data/
+orchestrator-webapp/backend/*.egg-info/
+
+# Knowledge base runtime feedback/queues
+knowledge-base/feedback/
+knowledge-base/inbox/pending/
+knowledge-base/inbox/processed/
+
+# Python/pytest caches inside generated deliveries
+**/__pycache__/
+*.pytest_cache/
+
+# Frontend package caches
+openclaw/node_modules/
+openclaw/dist/
+openclaw/ui/node_modules/
+orchestrator-webapp/frontend/node_modules/
+orchestrator-webapp/frontend/dist/

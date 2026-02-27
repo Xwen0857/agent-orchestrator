@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-orchestrator-suite.local/schemas/approval.schema.json",
+  "title": "TaskApproval",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "approval_id",
+    "task_id",
+    "approved_by",
+    "approved_at",
+    "scope",
+    "expires_at"
+  ],
+  "properties": {
+    "approval_id": {
+      "type": "string",
+      "pattern": "^APR-[0-9]{8}-[0-9]{6}(-[0-9]+)?$"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^task_[a-zA-Z0-9._-]+$"
+    },
+    "approved_by": {
+      "type": "string",
+      "minLength": 1
+    },
+    "approved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "over_budget_continue",
+        "high_risk_operation",
+        "break_glass"
+      ]
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

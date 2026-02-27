@@ -1,0 +1,4 @@
+[submodule "openclaw"]
+	path = openclaw
+	url = https://github.com/Xwen0857/openclaw.git
+	branch = feat/orchestrator-dashboard-session-entry

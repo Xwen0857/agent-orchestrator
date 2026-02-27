@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-orchestrator-suite.local/schemas/task-meta.schema.json",
+  "title": "TaskMeta",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "state",
+    "stage",
+    "owner",
+    "risk_level",
+    "version",
+    "budget",
+    "created_at",
+    "updated_at",
+    "parents",
+    "artifacts"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^task_[a-zA-Z0-9._-]+$"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "CREATED",
+        "PLANNED",
+        "ASSIGNED",
+        "IN_PROGRESS",
+        "TESTING",
+        "APPROVED",
+        "REJECTED",
+        "BLOCKED_AWAITING_CLARIFICATION",
+        "BLOCKED_PENDING_APPROVAL",
+        "BLOCKED_SYSTEM_ERROR",
+        "CLOSED"
+      ]
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "INTAKE",
+        "PLANNING",
+        "DELIVERY",
+        "TEST",
+        "AUDIT",
+        "GOVERNANCE",
+        "COMPLETE"
+      ]
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_token_cost",
+        "max_execution_time_seconds"
+      ],
+      "properties": {
+        "max_token_cost": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_execution_time_seconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "consumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "token_cost_used": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "execution_time_used_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "external_calls_used": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "default": {
+        "token_cost_used": 0,
+        "execution_time_used_seconds": 0,
+        "external_calls_used": 0
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "parents": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "path"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "checksum": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "last_approval_id": {
+      "type": "string"
+    },
+    "last_error": {
+      "type": "string"
+    },
+    "knowledge_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

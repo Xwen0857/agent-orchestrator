@@ -1,0 +1,14 @@
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/tsconfig.tsbuildinfo
+
+# Python
+backend/.venv/
+**/__pycache__/
+*.pyc
+
+# Runtime data
+backend/data/*.pid
+backend/data/*.lock

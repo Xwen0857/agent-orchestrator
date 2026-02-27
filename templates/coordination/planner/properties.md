@@ -1,0 +1,21 @@
+# Planner Properties
+
+- max_parallel_workers: auto
+- thread_reserve_ratio: 0.25
+- split_target_minutes_min: 45
+- split_target_minutes_max: 90
+- split_max_oversubscription_ratio: 1.5
+- min_split_units_per_task: 1
+- max_split_units_per_task: auto
+- worker_timeout_minutes: 60
+- pass_rate_window_size: 6
+- pass_rate_replace_threshold: 0.5
+- high_risk_requires_master_approval: true
+- budget_warn_threshold_ratio: 0.8
+- budget_block_threshold_ratio: 1
+- dashboard_refresh_minutes: 10
+- health_check_interval_minutes: 10
+- stale_in_progress_minutes: 60
+- keeper_cycle_minutes: 60
+- keeper_merge_similarity_threshold: 0.85
+- keeper_title_match_merge_threshold: 0.65

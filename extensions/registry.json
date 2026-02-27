@@ -1,0 +1,20 @@
+{
+  "coreApiVersion": "1.0.0",
+  "pluginApiVersion": "1.0.0",
+  "compatibility": {
+    "supportedMajor": 1,
+    "supportedMinorRange": [
+      0,
+      1
+    ]
+  },
+  "plugins": [
+    {
+      "id": "sample-observability",
+      "manifestPath": "/Users/dylan/.codex/skills-drafts/agent-orchestrator-suite/orchestrator-webapp/backend/plugins/sample_observability/plugin.manifest.json",
+      "enabled": true,
+      "installedAt": "2026-02-13T07:51:49Z",
+      "disabledReason": null
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-orchestrator-suite.local/schemas/plugin.manifest.schema.json",
+  "title": "PluginManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "version",
+    "apiVersion",
+    "capabilities",
+    "permissions",
+    "entrypoints"
+  ],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]+$" },
+    "name": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "apiVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "dashboard.widget",
+          "config.schema",
+          "validator",
+          "risk.rule",
+          "event.handler",
+          "webhook.consumer"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "read_config",
+          "read_events",
+          "emit_events",
+          "register_validator",
+          "register_risk_rule",
+          "register_event_handler",
+          "send_webhook"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "entrypoints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backend": { "type": "string" },
+        "frontend": { "type": "string" }
+      }
+    }
+  }
+}

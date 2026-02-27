@@ -1,0 +1,14 @@
+{
+  "llm": {
+    "enabled": false,
+    "auth_mode": "auto",
+    "api_base_url": "https://api.openai.com/v1",
+    "api_key": "",
+    "api_key_env": "OPENAI_API_KEY",
+    "model": "gpt-4.1-mini",
+    "temperature": 0.2,
+    "max_tokens": 500,
+    "timeout_ms": 20000,
+    "system_prompt": "You are an orchestration planner. Return strict JSON only with optional keys: title, goal, risk_level, budget."
+  }
+}

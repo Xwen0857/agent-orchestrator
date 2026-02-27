@@ -1,0 +1,52 @@
+{
+  "roles": {
+    "planner-core": {
+      "allowed_read_paths": [
+        "projects"
+      ]
+    },
+    "scheduler-ops": {
+      "allowed_read_paths": [
+        "projects"
+      ]
+    },
+    "planner-ops": {
+      "allowed_read_paths": [
+        "projects"
+      ]
+    },
+    "worker-delivery": {
+      "allowed_read_paths": [
+        "projects"
+      ],
+      "allowed_write_paths": [
+        "projects"
+      ],
+      "forbidden_paths": [
+        "projects/*/runs/*/.openclaw-system",
+        "projects/*/runs/*/agent_runtime_profiles.json",
+        "templates/coordination/orchestrator",
+        "templates/coordination/security"
+      ]
+    },
+    "tester-ephemeral": {
+      "allowed_read_paths": [
+        "projects"
+      ],
+      "allowed_write_paths": [
+        "projects"
+      ],
+      "forbidden_paths": [
+        "projects/*/runs/*/.openclaw-system",
+        "projects/*/runs/*/agent_runtime_profiles.json",
+        "templates/coordination/orchestrator",
+        "templates/coordination/security"
+      ]
+    },
+    "audit-guard": {
+      "allowed_read_paths": [
+        "projects"
+      ]
+    }
+  }
+}

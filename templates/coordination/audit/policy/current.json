@@ -1,0 +1,41 @@
+{
+  "version": "v1",
+  "rules": [
+    {
+      "rule_id": "AG-RISK-HIGH",
+      "tier": "HIGH",
+      "match_type": "risk_level",
+      "match_expr": "HIGH|CRITICAL",
+      "default_action": "BLOCK_PENDING_APPROVAL",
+      "requires_master_approval": true,
+      "freeze_scope": "operation",
+      "cooldown_minutes": 30,
+      "enabled": true,
+      "owner": "security"
+    },
+    {
+      "rule_id": "AG-BUDGET-EXHAUST",
+      "tier": "HIGH",
+      "match_type": "resource",
+      "match_expr": "budget>=100%",
+      "default_action": "BLOCK_PENDING_APPROVAL",
+      "requires_master_approval": true,
+      "freeze_scope": "operation",
+      "cooldown_minutes": 30,
+      "enabled": true,
+      "owner": "platform"
+    },
+    {
+      "rule_id": "AG-PERM-ELEV",
+      "tier": "CRITICAL",
+      "match_type": "command",
+      "match_expr": "sudo|privilege_elevation",
+      "default_action": "BLOCK_PENDING_APPROVAL",
+      "requires_master_approval": true,
+      "freeze_scope": "operation",
+      "cooldown_minutes": 60,
+      "enabled": true,
+      "owner": "security"
+    }
+  ]
+}

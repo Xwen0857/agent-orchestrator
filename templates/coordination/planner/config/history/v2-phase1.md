@@ -1,0 +1,34 @@
+# Current Planner Config
+
+version: v2-phase1
+updated_at: 2026-02-13T01:52:00Z
+source_snapshot: task-folder-v2
+state_machine: agent-orchestrator/references/state-machine-v2.md
+task_meta_schema: agent-orchestrator/references/task-meta-schema.json
+event_log_schema: agent-orchestrator/references/event-log-schema.md
+dashboard_script: agent-orchestrator/scripts/dashboard_summary.sh
+health_check_script: agent-orchestrator/scripts/health_check.sh
+transition_script: agent-orchestrator/scripts/transition_task_state.sh
+approval_validation_script: agent-orchestrator/scripts/validate_approval.sh
+auto_recovery_script: agent-orchestrator/scripts/auto_recovery.sh
+approval_schema: agent-orchestrator/references/approval-schema.json
+append_event_script: agent-orchestrator/scripts/append_task_event.sh
+verify_log_chain_script: agent-orchestrator/scripts/verify_task_log_chain.sh
+task_seal_script: agent-orchestrator/scripts/seal_task_snapshot.sh
+audit_gate_script: audit-guard/scripts/evaluate_gate.sh
+audit_policy: templates/coordination/audit/policy/current.json
+approval_grant_script: audit-guard/scripts/grant_approval.sh
+approval_ticket_script: audit-guard/scripts/create_approval_ticket.sh
+clarification_request_script: agent-orchestrator/scripts/request_clarification.sh
+clarification_response_script: agent-orchestrator/scripts/respond_clarification.sh
+kb_add_script: agent-orchestrator/scripts/kb_add_entry.sh
+kb_search_script: agent-orchestrator/scripts/kb_search.sh
+kb_link_script: agent-orchestrator/scripts/task_link_kb.sh
+kb_feedback_script: agent-orchestrator/scripts/kb_record_feedback.sh
+kb_score_recompute_script: agent-orchestrator/scripts/kb_recompute_scores.sh
+kb_ranked_search_script: agent-orchestrator/scripts/kb_ranked_search.sh
+audit_kb_feedback_script: audit-guard/scripts/record_kb_feedback.sh
+keeper_enabled: true
+keeper_script: keeper/scripts/keeper_run.sh
+keeper_scheduler_script: keeper/scripts/keeper_scheduler.sh
+keeper_runner_script: scripts/run_keeper.sh

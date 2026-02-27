@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="${1:---once}" # --once | --loop | --daemon-start | --daemon-stop | --daemon-status
+ITERATIONS="${2:-0}"
+
+SCHEDULER="keeper/scripts/keeper_scheduler.sh"
+PID_FILE="templates/coordination/orchestrator/.keeper-scheduler.pid"
+LOG_FILE="templates/coordination/orchestrator/keeper-scheduler.log"
+
+mkdir -p "$(dirname "$PID_FILE")"
+
+start_daemon() {
+  if [[ -f "$PID_FILE" ]]; then
+    pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
+      echo "keeper daemon already running pid=$pid"
+      exit 0
+    fi
+    rm -f "$PID_FILE"
+  fi
+  nohup bash "$SCHEDULER" --loop 0 >>"$LOG_FILE" 2>&1 &
+  echo $! > "$PID_FILE"
+  echo "keeper daemon started pid=$(cat "$PID_FILE")"
+}
+
+stop_daemon() {
+  if [[ ! -f "$PID_FILE" ]]; then
+    echo "keeper daemon not running"
+    exit 0
+  fi
+  pid="$(cat "$PID_FILE")"
+  if kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" || true
+    sleep 0.5
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -9 "$pid" || true
+    fi
+  fi
+  rm -f "$PID_FILE"
+  echo "keeper daemon stopped"
+}
+
+status_daemon() {
+  if [[ -f "$PID_FILE" ]]; then
+    pid="$(cat "$PID_FILE")"
+    if kill -0 "$pid" 2>/dev/null; then
+      echo "keeper daemon running pid=$pid"
+      exit 0
+    fi
+  fi
+  echo "keeper daemon not running"
+}
+
+case "$MODE" in
+  --once)
+    bash "$SCHEDULER" --once
+    ;;
+  --loop)
+    bash "$SCHEDULER" --loop "$ITERATIONS"
+    ;;
+  --daemon-start)
+    start_daemon
+    ;;
+  --daemon-stop)
+    stop_daemon
+    ;;
+  --daemon-status)
+    status_daemon
+    ;;
+  *)
+    echo "usage: $0 [--once|--loop <iterations>|--daemon-start|--daemon-stop|--daemon-status]"
+    exit 2
+    ;;
+esac
