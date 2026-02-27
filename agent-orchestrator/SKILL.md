@@ -37,7 +37,7 @@ description: 用于运行 planner-worker-tester-audit 协同流程的入口 skil
 5. worker 状态输出路径：`templates/coordination/workers/<worker_id>_worker.md`。
 6. tester 结果读取与汇总路径：`templates/coordination/testers/<run_id>/result.md`。
 7. orchestrator 汇总输出路径：`templates/coordination/orchestrator/<YYYYMMDD-HH>.md`。
-8. dashboard 输出路径：`templates/coordination/orchestrator/dashboard.md`、`templates/coordination/orchestrator/dashboard.json`。
+8. dashboard 输出路径：运行时文件为 `templates/coordination/orchestrator/dashboard.md`、`templates/coordination/orchestrator/dashboard.json`；静态说明见 `templates/coordination/orchestrator/dashboard.README.md`。
 
 ## 读取文件相对路径
 1. 读取 `templates/coordination/planner/config/current.md` 获取当前编排配置。

@@ -28,6 +28,7 @@ templates/coordination/orchestrator/agent_runtime.local.json
 templates/coordination/orchestrator/requests/
 templates/coordination/orchestrator/sessions/
 templates/coordination/orchestrator/dashboard.json
+templates/coordination/orchestrator/dashboard.md
 templates/coordination/orchestrator/system-health.json
 templates/coordination/orchestrator/.orchestrate-runner.lock
 templates/coordination/orchestrator/external-runner.log
