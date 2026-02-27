@@ -33,6 +33,8 @@ templates/coordination/orchestrator/system-health.json
 templates/coordination/orchestrator/.orchestrate-runner.lock
 templates/coordination/orchestrator/external-runner.log
 templates/coordination/security/*.ndjson
+templates/coordination/security/role_permissions.generated.json
+templates/coordination/security/role_permissions.effective.json
 
 # Runtime task artifacts
 templates/coordination/tasks/task_folders/*
