@@ -1,0 +1,9 @@
+{
+  "signature": "582f2c0d6227480ae286777d83d2bc8500d5c3358e8c250e40614936fe124eee",
+  "generated_at": "2026-02-27T08:11:22Z",
+  "files": [
+    "extensions/orchestrator-dashboard/index.ts",
+    "extensions/orchestrator-dashboard/orchestrate-command.ts",
+    "extensions/orchestrator-dashboard/openclaw.plugin.json"
+  ]
+}

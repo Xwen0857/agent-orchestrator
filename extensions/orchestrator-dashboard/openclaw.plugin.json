@@ -1,0 +1,82 @@
+{
+  "id": "orchestrator-dashboard",
+  "name": "Orchestrator Dashboard",
+  "description": "Dashboard + Config Studio for external orchestrator state/config files.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": { "type": "boolean" },
+      "repoRoot": { "type": "string" },
+      "basePath": { "type": "string" },
+      "apiBasePath": { "type": "string" },
+      "dashboardJsonPath": { "type": "string" },
+      "systemHealthJsonPath": { "type": "string" },
+      "plannerCurrentPath": { "type": "string" },
+      "plannerPropertiesPath": { "type": "string" },
+      "auditPolicyPath": { "type": "string" },
+      "configHistoryPath": { "type": "string" },
+      "snapshotScriptPath": { "type": "string" },
+      "rollbackScriptPath": { "type": "string" },
+      "requireGatewayAuth": { "type": "boolean" },
+      "runnerEnabled": { "type": "boolean" },
+      "runnerIntervalSec": { "type": "number" },
+      "runnerExecutionMode": { "type": "string" },
+      "runnerBatchSize": { "type": "number" },
+      "runnerMaxParallel": { "type": "number" },
+      "runtimeConsistencyMode": { "type": "string" },
+      "runnerFallbackEnabled": { "type": "boolean" },
+      "runnerFallbackMode": { "type": "string" },
+      "agentRuntimeConfigPath": { "type": "string" }
+    }
+  },
+  "uiHints": {
+    "enabled": { "label": "Enabled" },
+    "repoRoot": {
+      "label": "Orchestrator Repo Root",
+      "placeholder": "/path/to/agent-orchestrator-suite"
+    },
+    "basePath": {
+      "label": "Dashboard UI Path",
+      "placeholder": "/plugins/orchestrator"
+    },
+    "apiBasePath": {
+      "label": "Dashboard API Path",
+      "placeholder": "/api/plugins/orchestrator"
+    },
+    "requireGatewayAuth": {
+      "label": "Require Gateway Auth"
+    },
+    "runnerEnabled": {
+      "label": "Enable Runner"
+    },
+    "runnerIntervalSec": {
+      "label": "Runner Interval Sec"
+    },
+    "runnerExecutionMode": {
+      "label": "Runner Execution Mode",
+      "placeholder": "local_threads"
+    },
+    "runnerBatchSize": {
+      "label": "Runner Batch Size"
+    },
+    "runnerMaxParallel": {
+      "label": "Runner Max Parallel"
+    },
+    "runtimeConsistencyMode": {
+      "label": "Runtime Consistency Mode",
+      "placeholder": "enforce"
+    },
+    "runnerFallbackEnabled": {
+      "label": "Enable Runner Fallback"
+    },
+    "runnerFallbackMode": {
+      "label": "Runner Fallback Mode",
+      "placeholder": "external_daemon"
+    },
+    "agentRuntimeConfigPath": {
+      "label": "Agent Runtime Config",
+      "placeholder": "templates/coordination/orchestrator/agent_runtime.json"
+    }
+  }
+}

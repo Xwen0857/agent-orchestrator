@@ -167,13 +167,15 @@ This is the canonical template and metadata layer for:
 
 ### OpenClaw Integration
 
-- `openclaw/`
+- `extensions/orchestrator-dashboard/`
 
-`openclaw` is included as a submodule. It acts as the host runtime for the orchestrator plugin and related command entry surfaces.
+OpenClaw is treated as an external host dependency, not as repository content.
 
-The main plugin integration lives under:
+The main plugin package lives in this repository under:
 
-- `openclaw/extensions/orchestrator-dashboard`
+- `extensions/orchestrator-dashboard`
+
+and is intended to be installed into a separate OpenClaw checkout or deployment.
 
 ### Supporting Systems
 
@@ -212,20 +214,25 @@ This is an actively evolving engineering project, not a finished productized pla
 
 ### Clone the Repository
 
-Because `openclaw/` is a submodule, initialize it after cloning:
-
 ```bash
 git clone https://github.com/Xwen0857/agent-orchestrator.git
 cd agent-orchestrator
-git submodule update --init --recursive
+```
+
+### Install the Plugin Into an OpenClaw Host
+
+Clone OpenClaw separately, then link this plugin into that host:
+
+```bash
+bash scripts/install_openclaw_plugin.sh /path/to/openclaw
 ```
 
 ### Validate the Plugin Layer
 
-From the repository root:
+Run validation inside the target OpenClaw host checkout after the plugin is installed:
 
 ```bash
-cd openclaw
+cd /path/to/openclaw
 pnpm exec tsc -p tsconfig.json --noEmit
 pnpm exec vitest run src/plugins/orchestrator-dashboard.plugin.test.ts
 ```
@@ -235,7 +242,7 @@ pnpm exec vitest run src/plugins/orchestrator-dashboard.plugin.test.ts
 ### Main Working Areas
 
 - orchestration scripts: `agent-orchestrator/scripts`
-- plugin entry surface: `openclaw/extensions/orchestrator-dashboard`
+- plugin entry surface: `extensions/orchestrator-dashboard`
 - runtime templates: `templates/coordination`
 
 ### Prerequisites
@@ -253,6 +260,7 @@ Examples of intentionally excluded data:
 
 - `.openclaw/`
 - `.openclaw-state/`
+- `openclaw/`
 - active task run outputs
 - archived task artifacts
 - runtime workdomains

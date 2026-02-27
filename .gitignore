@@ -11,6 +11,7 @@ __pycache__/
 # Local OpenClaw state and plugin runtime data
 .openclaw/
 .openclaw-state/
+openclaw/
 
 # Node/build outputs
 node_modules/
@@ -80,8 +81,5 @@ knowledge-base/inbox/processed/
 *.pytest_cache/
 
 # Frontend package caches
-openclaw/node_modules/
-openclaw/dist/
-openclaw/ui/node_modules/
 orchestrator-webapp/frontend/node_modules/
 orchestrator-webapp/frontend/dist/
