@@ -34,7 +34,7 @@
     "enabled": { "label": "Enabled" },
     "repoRoot": {
       "label": "Orchestrator Repo Root",
-      "placeholder": "/path/to/agent-orchestrator-suite"
+      "placeholder": "/path/to/agent-orchestrator"
     },
     "basePath": {
       "label": "Dashboard UI Path",

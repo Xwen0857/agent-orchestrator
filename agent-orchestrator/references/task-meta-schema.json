@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agent-orchestrator-suite.local/schemas/task-meta.schema.json",
+  "$id": "https://agent-orchestrator.local/schemas/task-meta.schema.json",
   "title": "TaskMeta",
   "type": "object",
   "additionalProperties": false,
