@@ -68,7 +68,7 @@ export function createMockCommandContext(overrides: Record<string, unknown> = {}
     channel: "cli",
     senderId: "tester",
     sessionKey: "test-session",
-    messageThreadId: "thread-1",
+    messageThreadId: 1,
     ...overrides,
   };
 }

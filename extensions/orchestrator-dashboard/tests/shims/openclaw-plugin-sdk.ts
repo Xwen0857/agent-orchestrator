@@ -1,3 +1,39 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
+
+type BeforeAgentStartEvent = {
+  messages?: unknown[];
+};
+
+type BeforeAgentStartContext = {
+  sessionKey?: string;
+};
+
+type PluginCommandContext = {
+  args?: string;
+  channel: string;
+  senderId?: string;
+  sessionKey?: string;
+  commandTargetSessionKey?: string;
+  messageThreadId?: number;
+};
+
+type PluginCommandDefinition = {
+  name: string;
+  description?: string;
+  acceptsArgs?: boolean;
+  requireAuth?: boolean;
+  handler: (ctx: PluginCommandContext) => unknown | Promise<unknown>;
+};
+
+type PluginHttpRoute = {
+  path: string;
+  handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
+};
+
+type GatewayMethodParams = {
+  respond: (ok: boolean, payload: unknown) => void;
+};
+
 export type OpenClawPluginApi = {
   config: {
     gateway?: {
@@ -21,15 +57,23 @@ export type OpenClawPluginApi = {
   };
   registerTool?: (...args: unknown[]) => void;
   registerHook?: (...args: unknown[]) => void;
-  registerHttpHandler: (...args: unknown[]) => void;
-  registerHttpRoute: (...args: unknown[]) => void;
+  registerHttpHandler: (
+    handler: (req: IncomingMessage, res: ServerResponse) => boolean | Promise<boolean>,
+  ) => void;
+  registerHttpRoute: (route: PluginHttpRoute) => void;
   registerChannel?: (...args: unknown[]) => void;
-  registerGatewayMethod: (...args: unknown[]) => void;
+  registerGatewayMethod: (
+    name: string,
+    handler: (params: GatewayMethodParams) => unknown | Promise<unknown>,
+  ) => void;
   registerCli?: (...args: unknown[]) => void;
   registerService?: (...args: unknown[]) => void;
   registerProvider?: (...args: unknown[]) => void;
-  registerCommand: (...args: unknown[]) => void;
+  registerCommand: (command: PluginCommandDefinition) => void;
   resolvePath?: (input: string) => string;
-  on: (event: string, handler: (event: any, ctx: any) => unknown) => void;
+  on: (
+    event: string,
+    handler: (event: BeforeAgentStartEvent, ctx: BeforeAgentStartContext) => unknown,
+  ) => void;
   [key: string]: unknown;
 };

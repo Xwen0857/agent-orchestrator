@@ -42,7 +42,7 @@ describe("orchestrator-dashboard session commands", () => {
       createMockCommandContext({
         args: "run",
         sessionKey: "test-session-no-summary",
-        messageThreadId: "thread-2",
+        messageThreadId: 2,
       }),
     );
 
