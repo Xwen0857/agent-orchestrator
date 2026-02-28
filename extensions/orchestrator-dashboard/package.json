@@ -4,12 +4,20 @@
   "private": true,
   "description": "OpenClaw plugin: orchestrator dashboard + config studio",
   "type": "module",
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit"
+  },
   "devDependencies": {
-    "openclaw": "workspace:*"
+    "@types/node": "25.3.1",
+    "typescript": "5.9.3",
+    "vitest": "4.0.18"
   },
   "peerDependencies": {
     "openclaw": ">=2026.1.26"
   },
+  "packageManager": "pnpm@10.23.0",
   "openclaw": {
     "extensions": [
       "./index.ts"

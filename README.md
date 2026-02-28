@@ -240,7 +240,21 @@ pnpm exec tsc -p tsconfig.json --noEmit
 
 This TypeScript check validates that the linked plugin is compatible with the host's current plugin API surface.
 
-If your OpenClaw checkout includes additional local plugin tests, run those separately. The upstream host repository does not currently ship a standalone `src/plugins/orchestrator-dashboard.plugin.test.ts` target.
+Run plugin-local tests from this repository separately:
+
+```bash
+cd extensions/orchestrator-dashboard
+pnpm install
+pnpm test
+```
+
+Or use the repository helper:
+
+```bash
+bash scripts/test_orchestrator_plugin.sh
+```
+
+Host compatibility validation and plugin-local tests are intentionally separate checks.
 
 ## Development Notes
 

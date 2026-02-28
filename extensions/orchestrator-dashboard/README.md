@@ -62,6 +62,30 @@ bash scripts/install_openclaw_plugin.sh /path/to/openclaw
 
 This will symlink `extensions/orchestrator-dashboard` from this repository into the target OpenClaw host.
 
+## Testing
+
+Plugin-local tests run inside this repository and do not require the OpenClaw host checkout:
+
+```bash
+cd extensions/orchestrator-dashboard
+pnpm install
+pnpm run typecheck
+pnpm run test
+```
+
+Or from the repository root:
+
+```bash
+bash scripts/test_orchestrator_plugin.sh
+```
+
+Host compatibility should be validated separately inside the target OpenClaw checkout:
+
+```bash
+cd /path/to/openclaw
+pnpm exec tsc -p tsconfig.json --noEmit
+```
+
 Auth: when `requireGatewayAuth=true`, API calls require `Authorization: Bearer <gateway token or password>`.
 
 Runner execution:

@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "types": ["node", "vitest/globals"],
+    "baseUrl": ".",
+    "paths": {
+      "openclaw/plugin-sdk": ["tests/shims/openclaw-plugin-sdk.ts"]
+    }
+  },
+  "include": ["index.ts", "orchestrate-command.ts", "tests/**/*.ts"]
+}
