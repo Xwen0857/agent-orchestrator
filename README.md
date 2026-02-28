@@ -236,8 +236,11 @@ Run validation inside the target OpenClaw host checkout after the plugin is inst
 ```bash
 cd /path/to/openclaw
 pnpm exec tsc -p tsconfig.json --noEmit
-pnpm exec vitest run src/plugins/orchestrator-dashboard.plugin.test.ts
 ```
+
+This TypeScript check validates that the linked plugin is compatible with the host's current plugin API surface.
+
+If your OpenClaw checkout includes additional local plugin tests, run those separately. The upstream host repository does not currently ship a standalone `src/plugins/orchestrator-dashboard.plugin.test.ts` target.
 
 ## Development Notes
 
