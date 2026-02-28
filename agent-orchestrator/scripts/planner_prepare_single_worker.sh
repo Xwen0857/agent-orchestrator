@@ -32,30 +32,22 @@ PRIMARY_ID="primary_${TASK_ID#task_}"
 CHECKLIST_ID="CL_${TASK_ID#task_}"
 SUBCHECKLIST_ID="SCL_${TASK_ID#task_}_001"
 
-PRIMARY_FILE="$ROOT/templates/coordination/planner/primary.md"
+PRIMARY_TEMPLATE_FILE="$ROOT/templates/coordination/planner/primary.example.md"
+PRIMARY_FILE="$(resolve_planner_primary_path)"
 CHECKLIST_TEMPLATE_FILE="$ROOT/templates/coordination/planner/checklist.example.md"
 CHECKLIST_FILE="$(resolve_planner_checklist_path)"
-SUBCHECKLIST_FILE="$ROOT/templates/coordination/tasks/subchecklists/${SUBCHECKLIST_ID}.md"
-WORKER_TASKS_FILE="$ROOT/templates/coordination/tasks/worker_tasks/${WORKER_ID}_tasks.md"
+SUBCHECKLIST_TEMPLATE_FILE="$ROOT/templates/coordination/tasks/subchecklist.example.md"
+SUBCHECKLIST_FILE="$(resolve_subchecklists_runtime_dir)/${SUBCHECKLIST_ID}.md"
+WORKER_TASKS_TEMPLATE_FILE="$ROOT/templates/coordination/tasks/worker-task.example.md"
+WORKER_TASKS_FILE="$(resolve_worker_tasks_runtime_dir)/${WORKER_ID}_tasks.md"
 WORKER_LIFECYCLE_FILE="$ROOT/templates/coordination/worker_lifecycle/${WORKER_ID}_lifecycle.md"
 
 mkdir -p "$(dirname "$PRIMARY_FILE")" "$(dirname "$CHECKLIST_FILE")" "$(dirname "$SUBCHECKLIST_FILE")" "$(dirname "$WORKER_TASKS_FILE")" "$(dirname "$WORKER_LIFECYCLE_FILE")"
 
-if [[ ! -f "$PRIMARY_FILE" ]]; then
-  cat > "$PRIMARY_FILE" <<'TABLE'
-| primary_id | title | scope | constraints | acceptance_criteria | priority | status | start_signal |
-|---|---|---|---|---|---|---|---|
-TABLE
-fi
+ensure_runtime_file_from_template "$PRIMARY_FILE" "$PRIMARY_TEMPLATE_FILE"
 
 ensure_planner_checklist_file "$CHECKLIST_FILE" "$CHECKLIST_TEMPLATE_FILE"
-
-if [[ ! -f "$WORKER_TASKS_FILE" ]]; then
-  cat > "$WORKER_TASKS_FILE" <<'TABLE'
-| task_id | primary_id | checklist_item_id | subchecklist_id | title | owner_role | status | priority | attempts | notes |
-|---|---|---|---|---|---|---|---|---|---|
-TABLE
-fi
+ensure_runtime_file_from_template "$WORKER_TASKS_FILE" "$WORKER_TASKS_TEMPLATE_FILE"
 
 if [[ ! -f "$WORKER_LIFECYCLE_FILE" ]]; then
   cat > "$WORKER_LIFECYCLE_FILE" <<'TABLE'
@@ -74,6 +66,7 @@ if ! grep -Fq "$CHECKLIST_ID" "$CHECKLIST_FILE"; then
     "$CHECKLIST_ID" "$TITLE" "$TASK_ID" >> "$CHECKLIST_FILE"
 fi
 
+ensure_runtime_file_from_template "$SUBCHECKLIST_FILE" "$SUBCHECKLIST_TEMPLATE_FILE"
 cat > "$SUBCHECKLIST_FILE" <<TABLE
 | subchecklist_id | checklist_item_id | title | status | verification_rule | notes |
 |---|---|---|---|---|---|

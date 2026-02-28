@@ -10,7 +10,7 @@ description: 负责按 planner 指令完成代码或文档交付，提交结构�
 2. worker 负责 `ASSIGNED -> IN_PROGRESS -> TESTING` 的推进；每次推进必须记录到 `log.ndjson`。
 3. 执行中累计消耗必须写入 `meta.consumption` 并同步事件日志；超过预算 80% 记录 `WARN_BUDGET`，达到 100% 必须转 `BLOCKED_PENDING_APPROVAL`。
 4. 发生歧义时必须写 `clarification_request.md` 并将状态置为 `BLOCKED_AWAITING_CLARIFICATION`，不得静默等待。
-5. `templates/coordination/tasks/worker_tasks/<worker_id>_tasks.md` 仅作兼容镜像，不作为真实状态读写依据。
+5. 运行态 `worker_tasks/<worker_id>_tasks.md` 位于仓外状态目录；`templates/coordination/tasks/<worker_id>_tasks.md` 仅作兼容镜像，不作为真实状态读写依据。
 6. worker 开工前应执行知识库检索并将命中条目回链到 `meta.knowledge_refs`。
 7. 当 `keeper_enabled=true` 时，worker 不得直接写入 `knowledge-base/entries`，新增经验必须先提交候选到 keeper 队列；当 `keeper_enabled=false` 时可按旧路径直接写入。
 
@@ -24,7 +24,7 @@ description: 负责按 planner 指令完成代码或文档交付，提交结构�
 ## 输入文件相对路径
 1. `interface.json` 文件路径：项目根目录 `interface.json`。
 2. worker 初始化/指令文件路径：`templates/coordination/workers/<worker_id>_worker.md`。
-3. worker 任务文件路径（新）：`templates/coordination/tasks/worker_tasks/<worker_id>_tasks.md`。
+3. worker 任务运行文件路径（新）：`$AGENT_ORCHESTRATOR_STATE_DIR/tasks/worker_tasks/<worker_id>_tasks.md`（默认 `~/.openclaw-state/agent-orchestrator/tasks/worker_tasks/<worker_id>_tasks.md`）。
 4. worker 任务文件路径（兼容）：`templates/coordination/tasks/<worker_id>_tasks.md`。
 5. planner 当前配置路径：`templates/coordination/planner/config/current.md`。
 6. planner 属性配置路径：`templates/coordination/planner/properties.md`。
@@ -34,11 +34,11 @@ description: 负责按 planner 指令完成代码或文档交付，提交结构�
 2. worker 改动清单文件路径：`templates/coordination/workers/<worker_id>_change_manifest.md`。
 3. tester 交接任务文件路径：`templates/coordination/testers/<run_id>/task.md`。
 4. tester 交接摘要文件路径：`templates/coordination/testers/tester_logs/<worker_id>_handoff.md`。
-5. worker 任务状态回写路径（新）：`templates/coordination/tasks/worker_tasks/<worker_id>_tasks.md`。
+5. worker 任务状态回写运行路径（新）：`$AGENT_ORCHESTRATOR_STATE_DIR/tasks/worker_tasks/<worker_id>_tasks.md`。
 6. worker 任务兼容镜像路径（只读）：`templates/coordination/tasks/<worker_id>_tasks.md`。
 
 ## 读取文件相对路径
-1. 读取 `templates/coordination/tasks/worker_tasks/<worker_id>_tasks.md` 获取待办任务、优先级和截止时间。
+1. 读取运行态 `worker_tasks/<worker_id>_tasks.md`（默认 `~/.openclaw-state/agent-orchestrator/tasks/worker_tasks/<worker_id>_tasks.md`）获取待办任务、优先级和截止时间。
 2. 若新路径文件不存在，则回退读取 `templates/coordination/tasks/<worker_id>_tasks.md`。
 3. 读取 `templates/coordination/workers/<worker_id>_worker.md` 获取 worker 角色和能力约束。
 4. 读取 `templates/coordination/planner/config/current.md` 获取当前生效配置。
@@ -69,7 +69,7 @@ description: 负责按 planner 指令完成代码或文档交付，提交结构�
 4. 若出现安全或合规风险，立即停止交付并按 audit-guard 流程上报。
 
 ## 路径描述
-1. worker 输入任务路径（新）：`templates/coordination/tasks/worker_tasks`。
+1. worker 输入任务运行路径（新）：`$AGENT_ORCHESTRATOR_STATE_DIR/tasks/worker_tasks`（默认 `~/.openclaw-state/agent-orchestrator/tasks/worker_tasks`）。
 2. worker 输入任务路径（兼容）：`templates/coordination/tasks`。
 3. worker 输入状态路径：`templates/coordination/workers`。
 4. tester 任务与结果路径：`templates/coordination/testers/<run_id>`。
@@ -121,4 +121,4 @@ pass_criteria:
 ## 权限声明（用于自动ACL生成）
 - allowed_read_paths: `templates/coordination/tasks/task_folders`, `templates/coordination/workers`, `templates/coordination/planner`, `runtime/workdomains`
 - allowed_write_paths: `templates/coordination/tasks/task_folders`, `templates/coordination/testers`, `runtime/workdomains`
-- forbidden_paths: `templates/coordination/tasks/worker_tasks`, `templates/coordination/planner/config`, `templates/coordination/audit/policy`
+- forbidden_paths: `~/.openclaw-state/agent-orchestrator/tasks/worker_tasks`, `templates/coordination/planner/config`, `templates/coordination/audit/policy`

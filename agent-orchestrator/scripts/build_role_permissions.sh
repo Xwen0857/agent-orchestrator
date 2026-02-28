@@ -122,7 +122,7 @@ for role, path in skills.items():
             "templates/coordination/testers",
         ])
         forbidden.extend([
-            "templates/coordination/tasks/worker_tasks",
+            "~/.openclaw-state/agent-orchestrator/tasks/worker_tasks",
             "templates/coordination/planner/config",
             "templates/coordination/audit/policy",
         ])
@@ -139,11 +139,12 @@ for role, path in skills.items():
     elif role == "planner-ops":
         allowed_write.extend([
             "templates/coordination/planner",
-            "templates/coordination/tasks/subchecklists",
-            "templates/coordination/tasks/worker_tasks",
             "templates/coordination/workers",
             "templates/coordination/worker_lifecycle",
             "templates/coordination/tasks/task_folders",
+            "~/.openclaw-state/agent-orchestrator/planner",
+            "~/.openclaw-state/agent-orchestrator/tasks/subchecklists",
+            "~/.openclaw-state/agent-orchestrator/tasks/worker_tasks",
             "runtime/workdomains",
         ])
     elif role == "scheduler-ops":
@@ -155,9 +156,10 @@ for role, path in skills.items():
     elif role == "planner-core":
         allowed_write.extend([
             "templates/coordination/planner",
-            "templates/coordination/tasks/subchecklists",
-            "templates/coordination/tasks/worker_tasks",
             "templates/coordination/tasks/task_folders",
+            "~/.openclaw-state/agent-orchestrator/planner",
+            "~/.openclaw-state/agent-orchestrator/tasks/subchecklists",
+            "~/.openclaw-state/agent-orchestrator/tasks/worker_tasks",
             "runtime/workdomains",
         ])
     elif role == "audit-guard":

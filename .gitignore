@@ -86,3 +86,5 @@ knowledge-base/inbox/processed/
 # Frontend package caches
 orchestrator-webapp/frontend/node_modules/
 orchestrator-webapp/frontend/dist/
+
+templates/coordination/planner/primary.md

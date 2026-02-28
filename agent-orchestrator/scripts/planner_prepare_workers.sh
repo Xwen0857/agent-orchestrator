@@ -27,7 +27,8 @@ fi
 PROPS="$ROOT/templates/coordination/planner/properties.md"
 RUNTIME_CONFIG="$ROOT/templates/coordination/orchestrator/execution_runtime.json"
 CREATE_TASK_SCRIPT="$ROOT/agent-orchestrator/scripts/create_task_from_strategy.sh"
-PRIMARY_FILE="$ROOT/templates/coordination/planner/primary.md"
+PRIMARY_TEMPLATE_FILE="$ROOT/templates/coordination/planner/primary.example.md"
+PRIMARY_FILE="$(resolve_planner_primary_path)"
 CHECKLIST_TEMPLATE_FILE="$ROOT/templates/coordination/planner/checklist.example.md"
 CHECKLIST_FILE="$(resolve_planner_checklist_path)"
 COMPLETED_CONTEXT_FILE="$ROOT/templates/coordination/tasks/completed_context.ndjson"
@@ -166,12 +167,7 @@ ceil_div() {
   echo $(( (a + b - 1) / b ))
 }
 
-if [[ ! -f "$PRIMARY_FILE" ]]; then
-  cat > "$PRIMARY_FILE" <<'TABLE'
-| primary_id | title | scope | constraints | acceptance_criteria | priority | status | start_signal |
-|---|---|---|---|---|---|---|---|
-TABLE
-fi
+ensure_runtime_file_from_template "$PRIMARY_FILE" "$PRIMARY_TEMPLATE_FILE"
 ensure_planner_checklist_file "$CHECKLIST_FILE" "$CHECKLIST_TEMPLATE_FILE"
 
 THREAD_RESERVE_RATIO="$(as_float "$(get_prop thread_reserve_ratio 0.25)" 0.25)"

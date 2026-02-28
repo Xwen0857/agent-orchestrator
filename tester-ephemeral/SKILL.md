@@ -19,7 +19,7 @@ description: 根据某个 worker 的交接任务创建一次性 tester，执行�
 
 ## 输入文件相对路径
 1. 测试任务文件路径：`templates/coordination/testers/<run_id>/task.md`。
-2. worker 任务文件路径（新）：`templates/coordination/tasks/worker_tasks/<worker_id>_tasks.md`。
+2. worker 任务运行文件路径（新）：`$AGENT_ORCHESTRATOR_STATE_DIR/tasks/worker_tasks/<worker_id>_tasks.md`（默认 `~/.openclaw-state/agent-orchestrator/tasks/worker_tasks/<worker_id>_tasks.md`）。
 3. worker 任务文件路径（兼容）：`templates/coordination/tasks/<worker_id>_tasks.md`。
 4. worker 状态文件路径：`templates/coordination/workers/<worker_id>_worker.md`。
 5. 执行接口定义路径：项目根目录 `interface.json`。
@@ -29,12 +29,12 @@ description: 根据某个 worker 的交接任务创建一次性 tester，执行�
 1. 测试结果文件路径：`templates/coordination/testers/<run_id>/result.md`。
 2. 测试结果结构化文件路径：`templates/coordination/testers/<run_id>/result.json`。
 3. tester 日志摘要路径：`templates/coordination/testers/tester_logs/<worker_id>_test_logs.md`。
-4. worker 任务回写路径（新）：`templates/coordination/tasks/worker_tasks/<worker_id>_tasks.md`。
+4. worker 任务回写运行路径（新）：`$AGENT_ORCHESTRATOR_STATE_DIR/tasks/worker_tasks/<worker_id>_tasks.md`。
 5. worker 任务兼容镜像路径（只读）：`templates/coordination/tasks/<worker_id>_tasks.md`。
 
 ## 读取文件相对路径
 1. 读取 `templates/coordination/testers/<run_id>/task.md` 获取测试范围、命令和通过标准。
-2. 优先读取 `templates/coordination/tasks/worker_tasks/<worker_id>_tasks.md` 获取当前任务状态与尝试次数。
+2. 优先读取运行态 `worker_tasks/<worker_id>_tasks.md`（默认 `~/.openclaw-state/agent-orchestrator/tasks/worker_tasks/<worker_id>_tasks.md`）获取当前任务状态与尝试次数。
 3. 若新路径文件不存在，则回退读取 `templates/coordination/tasks/<worker_id>_tasks.md`。
 4. 读取 `templates/coordination/workers/<worker_id>_worker.md` 获取 worker 上下文。
 5. 读取 `interface.json` 获取接口或契约约束。
@@ -84,7 +84,7 @@ description: 根据某个 worker 的交接任务创建一次性 tester，执行�
 ## 路径描述
 1. tester 单次运行目录：`templates/coordination/testers/<run_id>`。
 2. tester 日志目录：`templates/coordination/testers/tester_logs`。
-3. worker 任务目录（新）：`templates/coordination/tasks/worker_tasks`。
+3. worker 任务运行目录（新）：`$AGENT_ORCHESTRATOR_STATE_DIR/tasks/worker_tasks`（默认 `~/.openclaw-state/agent-orchestrator/tasks/worker_tasks`）。
 4. worker 任务目录（兼容）：`templates/coordination/tasks`。
 5. worker 状态目录：`templates/coordination/workers`。
 6. planner 配置路径：`templates/coordination/planner/config/current.md`。

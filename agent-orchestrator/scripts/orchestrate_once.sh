@@ -3,6 +3,7 @@ set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+source "$ROOT/agent-orchestrator/scripts/planner_state_paths.sh"
 TASKS_ROOT="$ROOT/templates/coordination/tasks/task_folders"
 TARGET_TASK_ID=""
 DISPATCH_ROLE="agent-orchestrator"
@@ -264,7 +265,7 @@ worker_status_file() {
 
 worker_tasks_file() {
   local worker_id="$1"
-  printf '%s/templates/coordination/tasks/worker_tasks/%s_tasks.md\n' "$ROOT" "$worker_id"
+  printf '%s/%s_tasks.md\n' "$(resolve_worker_tasks_runtime_dir)" "$worker_id"
 }
 
 worker_lifecycle_file() {

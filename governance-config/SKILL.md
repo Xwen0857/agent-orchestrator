@@ -16,8 +16,8 @@ description: 管理 planner 约定与 properties 的审批变更、版本快照�
 8. 支持自动化测试/验证，验证失败不得发布为当前版本。
 9. 检测到未经批准的高危变更时，触发告警并回滚到最近稳定版本。
 10. 生成配置变更报告（每六小时一次），用于审阅和追踪。
-11. `primary.md` 在 `STARTED` 后进入核心字段冻结状态，未经审批不得修改核心字段。
-12. `primary.md` 的冻结变更视为高风险操作，必须关联审批单与审计记录。
+11. 运行态 `primary.md` 在 `STARTED` 后进入核心字段冻结状态，未经审批不得修改核心字段。
+12. 运行态 `primary.md` 的冻结变更视为高风险操作，必须关联审批单与审计记录。
 
 ## 高危操作
 1. 任何未经审批的配置变更。
@@ -29,7 +29,7 @@ description: 管理 planner 约定与 properties 的审批变更、版本快照�
 7. 任何未及时通知相关人员的配置变更或回滚。
 8. 任何未保留完整证据链的配置变更或回滚。
 9. 任何未与 audit-guard 协同实现审批和回滚的配置变更或回滚。
-10. `primary.md` 在 `STARTED` 状态下被直接修改核心字段且无审批记录。
+10. 运行态 `primary.md` 在 `STARTED` 状态下被直接修改核心字段且无审批记录。
 
 ## 何时使用
 1. planner 约定或 properties 需要变更。
@@ -43,7 +43,7 @@ description: 管理 planner 约定与 properties 的审批变更、版本快照�
 9. 需要向其他系统提供当前配置和历史版本查询能力。
 
 ## 路径描述
-1. 入口需求文件路径：`templates/coordination/planner/primary.md`。
+1. 入口需求运行文件路径：`$AGENT_ORCHESTRATOR_STATE_DIR/planner/primary.md`（默认 `~/.openclaw-state/agent-orchestrator/planner/primary.md`）；示例模板：`templates/coordination/planner/primary.example.md`。
 2. 当前配置文件路径：`templates/coordination/planner/config/current.md`。
 3. 历史快照目录路径：`templates/coordination/planner/config/history`。
 4. 配置变更报告目录路径：`templates/coordination/audit/reports`。
@@ -101,7 +101,7 @@ description: 管理 planner 约定与 properties 的审批变更、版本快照�
 6. 审批结果必须可追踪、可查询，并与通知链路打通。
 
 ## primary核心字段冻结策略
-1. 冻结触发条件：`templates/coordination/planner/primary.md` 的 `status=STARTED`。
+1. 冻结触发条件：运行态 `primary.md`（默认 `~/.openclaw-state/agent-orchestrator/planner/primary.md`）的 `status=STARTED`。
 2. 冻结字段范围：`primary_id`、`title`、`scope`、`constraints`、`acceptance_criteria`、`priority`、`start_signal`。
 3. 冻结后允许变更字段：补充说明、执行备注、风险备注（不得改变原始需求语义）。
 4. 若需修改冻结字段，必须先生成审批单并记录变更原因、影响评估、回滚方案。

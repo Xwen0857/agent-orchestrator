@@ -17,6 +17,6 @@ description: 负责任务需求建模、拆解与前置分派决策，不负责�
 3. 不直接执行 worker/tester 交付动作。
 
 ## 权限声明（用于自动ACL生成）
-- allowed_read_paths: `templates/coordination/planner`, `templates/coordination/tasks/subchecklists`, `templates/coordination/tasks/worker_tasks`, `templates/coordination/tasks/task_folders`, `templates/coordination/tasks/completed_context.ndjson`, `runtime/workdomains`, `projects`
-- allowed_write_paths: `templates/coordination/planner`, `templates/coordination/tasks/subchecklists`, `templates/coordination/tasks/worker_tasks`, `templates/coordination/tasks/task_folders`, `runtime/workdomains`
+- allowed_read_paths: `templates/coordination/planner`, `templates/coordination/tasks/task_folders`, `templates/coordination/tasks/completed_context.ndjson`, `runtime/workdomains`, `projects`, `~/.openclaw-state/agent-orchestrator/planner`, `~/.openclaw-state/agent-orchestrator/tasks/subchecklists`, `~/.openclaw-state/agent-orchestrator/tasks/worker_tasks`
+- allowed_write_paths: `templates/coordination/planner`, `templates/coordination/tasks/task_folders`, `runtime/workdomains`, `~/.openclaw-state/agent-orchestrator/planner`, `~/.openclaw-state/agent-orchestrator/tasks/subchecklists`, `~/.openclaw-state/agent-orchestrator/tasks/worker_tasks`
 - forbidden_paths: `templates/coordination/security/acl_denied.ndjson`

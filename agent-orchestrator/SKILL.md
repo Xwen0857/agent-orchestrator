@@ -11,7 +11,7 @@ description: 用于运行 planner-worker-tester-audit 协同流程的入口 skil
 3. 每次状态变化必须追加写入 `templates/coordination/tasks/task_folders/<task_id>/log.ndjson`，字段遵循 `agent-orchestrator/references/event-log-schema.md`。
 4. 任务目录结构必须遵循 `agent-orchestrator/references/task-folder-spec.md`，并优先复用 `templates/coordination/tasks/task_folders/_task_id_` 模板。
 5. 并发写入必须执行 `.lock` + `meta.version` 校验 + 原子替换（临时文件后 `rename`）。
-6. 旧路径 `templates/coordination/tasks/worker_tasks` 与 `templates/coordination/tasks/*.md` 为兼容视图，不得作为状态主写入目标。
+6. 旧路径 `templates/coordination/tasks/*.md` 为兼容视图，不得作为状态主写入目标；运行态 `worker_tasks/subchecklists/primary` 已迁至仓外状态目录。
 
 ## 核心职责
 1. 作为总调度入口，串联 requirement-intake、planner、worker、tester、audit、governance 六类能力。
@@ -23,7 +23,7 @@ description: 用于运行 planner-worker-tester-audit 协同流程的入口 skil
 
 ## 输入文件相对路径
 1. orchestrator 入口请求路径：用户请求上下文（会话输入）。
-2. 入口需求路径：`templates/coordination/planner/primary.md`。
+2. 入口需求运行路径：`$AGENT_ORCHESTRATOR_STATE_DIR/planner/primary.md`（默认 `~/.openclaw-state/agent-orchestrator/planner/primary.md`）；示例模板：`templates/coordination/planner/primary.example.md`。
 3. planner 配置路径：`templates/coordination/planner/config/current.md`。
 4. planner 属性路径：`templates/coordination/planner/properties.md`。
 5. 风险策略定义路径：`audit-guard/references/policy-schema.md`。
@@ -32,7 +32,7 @@ description: 用于运行 planner-worker-tester-audit 协同流程的入口 skil
 ## 输出文件相对路径
 1. 审批单输出路径：`templates/coordination/audit/approvals/<approval_id>.md`。
 2. 审计报告输出路径：`templates/coordination/audit/reports/<YYYYMMDD-HH>.md`。
-3. 任务分配输出路径（新）：`templates/coordination/tasks/worker_tasks/<worker_id>_tasks.md`。
+3. 任务分配运行路径（新）：`$AGENT_ORCHESTRATOR_STATE_DIR/tasks/worker_tasks/<worker_id>_tasks.md`（默认 `~/.openclaw-state/agent-orchestrator/tasks/worker_tasks/<worker_id>_tasks.md`）；示例模板：`templates/coordination/tasks/worker-task.example.md`。
 4. 任务分配输出路径（兼容）：`templates/coordination/tasks/<worker_id>_tasks.md`。
 5. worker 状态输出路径：`templates/coordination/workers/<worker_id>_worker.md`。
 6. tester 结果读取与汇总路径：`templates/coordination/testers/<run_id>/result.md`。
@@ -43,7 +43,7 @@ description: 用于运行 planner-worker-tester-audit 协同流程的入口 skil
 ## 读取文件相对路径
 1. 读取 `templates/coordination/planner/config/current.md` 获取当前编排配置。
 2. 读取 `templates/coordination/planner/properties.md` 获取执行属性与约束。
-3. 读取 `templates/coordination/tasks/worker_tasks` 下任务文件获取全局进度。
+3. 读取运行态 `worker_tasks`（默认 `~/.openclaw-state/agent-orchestrator/tasks/worker_tasks`）下任务文件获取全局进度。
 4. 读取 `templates/coordination/tasks` 下兼容任务文件补齐旧流程数据。
 5. 读取 `templates/coordination/workers` 下 worker 文件获取状态与能力信息。
 6. 读取 `templates/coordination/testers` 下测试结果文件驱动验收决策。
@@ -51,7 +51,7 @@ description: 用于运行 planner-worker-tester-audit 协同流程的入口 skil
 
 ## 编排执行流程
 1. 初始化阶段：加载配置、读取策略、校验依赖文件是否可用。
-2. 入口阶段：调用 requirement-intake 标准化需求并写入 `primary.md`。
+2. 入口阶段：调用 requirement-intake 标准化需求并写入运行态 `primary.md`。
 3. 启动治理阶段：当 `primary.status` 由 `READY` 进入 `STARTED` 时，必须调用 governance-config 记录冻结与审计。
 4. 规划阶段：调用 planner-ops 进行任务拆解、分派、worker 生命周期调度。
 5. 交付阶段：调用 worker-delivery 执行实现并产出交付记录。
@@ -106,10 +106,10 @@ description: 用于运行 planner-worker-tester-audit 协同流程的入口 skil
 5. governance 回滚触发：恢复到最近稳定快照并生成回滚审计记录。
 
 ## 路径描述
-1. 入口需求路径：`templates/coordination/planner/primary.md`。
+1. 入口需求运行路径：`$AGENT_ORCHESTRATOR_STATE_DIR/planner/primary.md`（默认 `~/.openclaw-state/agent-orchestrator/planner/primary.md`）；示例模板：`templates/coordination/planner/primary.example.md`。
 2. planner 配置路径：`templates/coordination/planner/config`。
 3. planner 属性路径：`templates/coordination/planner/properties.md`。
-4. 任务与 worker 路径（新）：`templates/coordination/tasks/worker_tasks`、`templates/coordination/workers`。
+4. 任务与 worker 路径（新）：运行态 `~/.openclaw-state/agent-orchestrator/tasks/worker_tasks`、`templates/coordination/workers`。
 5. 任务路径（兼容）：`templates/coordination/tasks`。
 6. tester 路径：`templates/coordination/testers`。
 7. 审计路径：`templates/coordination/audit/approvals`、`templates/coordination/audit/reports`。

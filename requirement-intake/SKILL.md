@@ -16,16 +16,16 @@ description: 负责引导用户按统一入口规范提交需求，生成并维�
 1. 用户需求输入：会话输入（自然语言）。
 2. planner 当前配置：`templates/coordination/planner/config/current.md`。
 3. planner 属性配置：`templates/coordination/planner/properties.md`。
-4. 入口需求文件：`templates/coordination/planner/primary.md`。
+4. 入口需求运行文件：`$AGENT_ORCHESTRATOR_STATE_DIR/planner/primary.md`（默认 `~/.openclaw-state/agent-orchestrator/planner/primary.md`）；示例模板：`templates/coordination/planner/primary.example.md`。
 
 ## 输出文件相对路径
-1. 入口需求文件：`templates/coordination/planner/primary.md`。
+1. 入口需求运行文件：`$AGENT_ORCHESTRATOR_STATE_DIR/planner/primary.md`（默认 `~/.openclaw-state/agent-orchestrator/planner/primary.md`）；示例模板：`templates/coordination/planner/primary.example.md`。
 2. 入口校验记录：`templates/coordination/planner/primary_validation.md`。
 3. 需求澄清问答记录：`templates/coordination/planner/primary_clarifications.md`。
 4. 启动治理联动记录：`templates/coordination/planner/primary_start_governance.md`。
 
 ## 读取文件相对路径
-1. 读取 `templates/coordination/planner/primary.md` 判断当前状态与缺失字段。
+1. 读取运行态 `primary.md`（默认 `~/.openclaw-state/agent-orchestrator/planner/primary.md`）判断当前状态与缺失字段；格式参考 `templates/coordination/planner/primary.example.md`。
 2. 读取 `templates/coordination/planner/config/current.md` 获取约束策略。
 3. 读取 `templates/coordination/planner/properties.md` 获取执行属性。
 
@@ -45,7 +45,7 @@ description: 负责引导用户按统一入口规范提交需求，生成并维�
 6. 进入 `STARTED` 后将任务交给 planner-ops，不再改动核心字段。
 
 ## 路径描述
-1. 入口需求路径：`templates/coordination/planner/primary.md`。
+1. 入口需求运行路径：`$AGENT_ORCHESTRATOR_STATE_DIR/planner/primary.md`（默认 `~/.openclaw-state/agent-orchestrator/planner/primary.md`）。
 2. 校验记录路径：`templates/coordination/planner/primary_validation.md`。
 3. 澄清记录路径：`templates/coordination/planner/primary_clarifications.md`。
 4. 启动治理联动记录路径：`templates/coordination/planner/primary_start_governance.md`。
@@ -57,7 +57,7 @@ description: 负责引导用户按统一入口规范提交需求，生成并维�
 4. 启动治理联动记录示例：`primary_start_governance.md`。
 
 ## 输出文件内容格式
-1. `templates/coordination/planner/primary.md` 文件内容格式：
+1. `templates/coordination/planner/primary.example.md` 示例内容格式（运行态文件位于仓外状态目录）：
 ```| primary_id | title | scope | constraints | acceptance_criteria | priority | status | start_signal |
 |---|---|---|---|---|---|---|---|
 ```
