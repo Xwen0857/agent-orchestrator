@@ -1,7 +1,13 @@
 import {
   applyMessageToDraft,
+  appendSessionHistory,
+  buildEntryAgentContext,
   buildEmptyOrchestrateSession,
+  buildSessionFilePath,
+  buildSessionFileStem,
   buildSummaryFromDraft,
+  buildSummaryFilePath,
+  extractLatestUserMessage,
   getRunnableSummary,
   normalizeOrchestrateSession,
   normalizeOrchestrateSummary,
@@ -67,6 +73,17 @@ describe("orchestrate-session pure logic", () => {
     });
   });
 
+  it("builds stable session file names and summary paths", () => {
+    expect(buildSessionFileStem("abc")).toBe("abc_ba7816bf8f01");
+    expect(buildSessionFileStem("  /  ")).toBe("session_7701365be9ea");
+    expect(buildSessionFilePath("/tmp/sessions", "abc")).toBe(
+      "/tmp/sessions/abc_ba7816bf8f01.json",
+    );
+    expect(buildSummaryFilePath("/tmp/requests", "abc", "sum_1")).toBe(
+      "/tmp/requests/abc_ba7816bf8f01.sum_1.summary.json",
+    );
+  });
+
   it("applies message content into draft metadata and dedupes duplicate messages", () => {
     const base = buildEmptyOrchestrateSession(
       {
@@ -98,6 +115,38 @@ describe("orchestrate-session pure logic", () => {
     expect(next.draft.deliverables).toEqual(["RUNBOOK.md", "tests", "source"]);
     expect(next.history).toHaveLength(1);
     expect(repeated).toBe(next);
+  });
+
+  it("dedupes repeated history entries but preserves distinct transitions", () => {
+    const base = buildEmptyOrchestrateSession({
+      sessionKey: "sess-history",
+      channel: "cli",
+      senderId: "tester",
+    });
+
+    const once = appendSessionHistory(base, {
+      timestamp: "2026-02-28T08:00:00.000Z",
+      role: "user",
+      kind: "message",
+      content: "same",
+    });
+    const duplicate = appendSessionHistory(once, {
+      timestamp: "2026-02-28T08:01:00.000Z",
+      role: "user",
+      kind: "message",
+      content: "same",
+    });
+    const distinct = appendSessionHistory(duplicate, {
+      timestamp: "2026-02-28T08:02:00.000Z",
+      role: "entry_agent",
+      kind: "summary",
+      content: "sum_1",
+    });
+
+    expect(once.history).toHaveLength(1);
+    expect(duplicate.history).toHaveLength(1);
+    expect(distinct.history).toHaveLength(2);
+    expect(distinct.history[1]?.content).toBe("sum_1");
   });
 
   it("builds summaries from the current draft with injected ids", () => {
@@ -361,5 +410,67 @@ describe("orchestrate-session pure logic", () => {
         content: "",
       },
     ]);
+  });
+
+  it("extracts the latest usable user message from mixed message payloads", () => {
+    expect(
+      extractLatestUserMessage([
+        { role: "assistant", content: "ignore" },
+        {
+          role: "user",
+          content: [
+            "Build",
+            { text: " websocket" },
+            { text: "" },
+            { nope: "skip" },
+          ],
+        },
+      ]),
+    ).toBe("Build websocket");
+
+    expect(
+      extractLatestUserMessage([
+        { role: "user", content: " older " },
+        { role: "user", content: [{ nope: "bad" }] },
+        { role: "user", content: " latest " },
+      ]),
+    ).toBe("latest");
+
+    expect(
+      extractLatestUserMessage([
+        null,
+        { role: "assistant", content: "ignore" },
+        { role: "user", content: [{ nope: "bad" }] },
+      ]),
+    ).toBe("");
+  });
+
+  it("builds entry agent context from the current draft", () => {
+    const session = buildEmptyOrchestrateSession({
+      sessionKey: "sess-context",
+      channel: "cli",
+      senderId: "tester",
+    });
+    session.draft.task_goal = "Ship dashboard";
+    session.draft.project_id = "prj_demo";
+    session.draft.workspace_root = "apps/demo";
+    session.draft.risk_level = "HIGH";
+    session.draft.requested_mode = "multi";
+    session.draft.deliverables = ["RUNBOOK.md", "tests"];
+    session.draft.budget = {
+      max_token_cost: 1200,
+      max_execution_time_seconds: 90,
+    };
+
+    const context = buildEntryAgentContext(session);
+
+    expect(context).toContain("You are currently acting as the orchestrate entry agent");
+    expect(context).toContain("- task_goal: Ship dashboard");
+    expect(context).toContain("- project_id: prj_demo");
+    expect(context).toContain("- workspace_root: apps/demo");
+    expect(context).toContain("- risk_level: HIGH");
+    expect(context).toContain("- budget: 1200,90");
+    expect(context).toContain("- requested_mode: multi");
+    expect(context).toContain("- deliverables: RUNBOOK.md, tests");
   });
 });

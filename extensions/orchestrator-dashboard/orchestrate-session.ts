@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import path from "node:path";
 
 export type OrchestrateSubcommand =
   | "run"
@@ -187,7 +188,7 @@ function mergeUnique(base: string[], incoming: string[]): string[] {
   return [...new Set([...base, ...incoming].filter(Boolean))];
 }
 
-function appendSessionHistory(
+export function appendSessionHistory(
   session: OrchestrateSessionState,
   entry: OrchestrateSessionState["history"][number],
 ): OrchestrateSessionState {
@@ -228,6 +229,27 @@ export function resolveConversationSessionKey(input: unknown): string {
     typeof record.commandTargetSessionKey === "string" ? record.commandTargetSessionKey : "";
   const sessionKey = typeof record.sessionKey === "string" ? record.sessionKey : "";
   return (commandTargetSessionKey || sessionKey).trim();
+}
+
+export function buildSessionFileStem(sessionKey: string): string {
+  const safe = sessionKey
+    .replace(/[^A-Za-z0-9._-]+/gu, "_")
+    .replace(/^_+|_+$/gu, "")
+    .slice(0, 80);
+  const digest = createHash("sha256").update(sessionKey).digest("hex").slice(0, 12);
+  return `${safe || "session"}_${digest}`;
+}
+
+export function buildSessionFilePath(sessionsDir: string, sessionKey: string): string {
+  return path.join(sessionsDir, `${buildSessionFileStem(sessionKey)}.json`);
+}
+
+export function buildSummaryFilePath(
+  requestsDir: string,
+  sessionKey: string,
+  summaryId: string,
+): string {
+  return path.join(requestsDir, `${buildSessionFileStem(sessionKey)}.${summaryId}.summary.json`);
 }
 
 export function buildEmptyOrchestrateSession(
@@ -505,6 +527,59 @@ export function normalizeOrchestrateSession(
           }
         : undefined,
   };
+}
+
+export function extractLatestUserMessage(messages: unknown[] | undefined): string {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const row = list[i];
+    const msg = asRecord(row);
+    if (!msg) {
+      continue;
+    }
+    if (normalizeString(msg.role, "") !== "user") {
+      continue;
+    }
+    if (typeof msg.content === "string") {
+      return msg.content.trim();
+    }
+    if (!Array.isArray(msg.content)) {
+      continue;
+    }
+    const chunks = msg.content
+      .map((part) => {
+        if (typeof part === "string") {
+          return part;
+        }
+        const segment = asRecord(part);
+        return segment ? normalizeString(segment.text, "") : "";
+      })
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    if (chunks) {
+      return chunks;
+    }
+  }
+  return "";
+}
+
+export function buildEntryAgentContext(session: OrchestrateSessionState): string {
+  return [
+    "You are currently acting as the orchestrate entry agent for an active /orchestrate session.",
+    "Do not execute the task. Do not create tasks automatically.",
+    "Your job is to help the user refine task goals and orchestration configuration.",
+    "Ask concise follow-up questions only when important details are missing.",
+    "Remind the user to run /orchestrate summary when they want a structured recap.",
+    "Current draft:",
+    `- task_goal: ${session.draft.task_goal || "(none yet)"}`,
+    `- project_id: ${session.draft.project_id || "(default)"}`,
+    `- workspace_root: ${session.draft.workspace_root || "(default)"}`,
+    `- risk_level: ${session.draft.risk_level}`,
+    `- budget: ${session.draft.budget.max_token_cost},${session.draft.budget.max_execution_time_seconds}`,
+    `- requested_mode: ${session.draft.requested_mode}`,
+    `- deliverables: ${session.draft.deliverables.join(", ") || "(none)"}`,
+  ].join("\n");
 }
 
 export function validateRunCommandPayload(payload: string): string | null {

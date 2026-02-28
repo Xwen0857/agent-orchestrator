@@ -17,8 +17,13 @@ import {
 } from "./orchestrate-command.js";
 import {
   applyMessageToDraft,
+  appendSessionHistory,
+  buildEntryAgentContext,
   buildEmptyOrchestrateSession,
+  buildSessionFilePath,
   buildSummaryFromDraft,
+  buildSummaryFilePath,
+  extractLatestUserMessage,
   getRunnableSummary,
   normalizeOrchestrateSession,
   parseOrchestrateArgs,
@@ -1799,25 +1804,13 @@ const orchestratorDashboardPlugin = {
       await writeJsonAtomic(paths.pathState, next);
     };
 
-    const sessionFileStem = (sessionKey: string): string => {
-      const safe = sessionKey
-        .replace(/[^A-Za-z0-9._-]+/gu, "_")
-        .replace(/^_+|_+$/gu, "")
-        .slice(0, 80);
-      const digest = createHash("sha256").update(sessionKey).digest("hex").slice(0, 12);
-      return `${safe || "session"}_${digest}`;
-    };
-
-    const sessionFilePath = (sessionKey: string): string =>
-      path.join(paths.orchestrateSessionsDir, `${sessionFileStem(sessionKey)}.json`);
-
     const readOrchestrateSession = async (
       sessionKey: string,
     ): Promise<OrchestrateSessionState | null> => {
       if (!sessionKey) {
         return null;
       }
-      const sessionPath = sessionFilePath(sessionKey);
+      const sessionPath = buildSessionFilePath(paths.orchestrateSessionsDir, sessionKey);
       if (!(await fileExists(sessionPath))) {
         return null;
       }
@@ -1831,85 +1824,7 @@ const orchestratorDashboardPlugin = {
     };
 
     const writeOrchestrateSession = async (next: OrchestrateSessionState): Promise<void> => {
-      await writeJsonAtomic(sessionFilePath(next.session_key), next);
-    };
-
-    const appendSessionHistory = (
-      session: OrchestrateSessionState,
-      entry: OrchestrateSessionState["history"][number],
-    ): OrchestrateSessionState => {
-      const history = [...session.history];
-      const last = history[history.length - 1];
-      if (
-        !last ||
-        last.role !== entry.role ||
-        last.kind !== entry.kind ||
-        last.content !== entry.content
-      ) {
-        history.push(entry);
-      }
-      return { ...session, history };
-    };
-
-    const extractLatestUserMessage = (messages: unknown[] | undefined): string => {
-      const list = Array.isArray(messages) ? messages : [];
-      for (let i = list.length - 1; i >= 0; i -= 1) {
-        const row = list[i];
-        if (!row || typeof row !== "object") {
-          continue;
-        }
-        const msg = row as Record<string, unknown>;
-        if (asString(msg.role, "") !== "user") {
-          continue;
-        }
-        const content = msg.content;
-        if (typeof content === "string") {
-          return content.trim();
-        }
-        if (Array.isArray(content)) {
-          const chunks = content
-            .map((part) => {
-              if (typeof part === "string") {
-                return part;
-              }
-              if (part && typeof part === "object") {
-                return asString((part as Record<string, unknown>).text, "");
-              }
-              return "";
-            })
-            .filter(Boolean)
-            .join(" ")
-            .trim();
-          if (chunks) {
-            return chunks;
-          }
-        }
-      }
-      return "";
-    };
-
-    const summaryFilePath = (sessionKey: string, summaryId: string): string =>
-      path.join(
-        paths.orchestrateRequestsDir,
-        `${sessionFileStem(sessionKey)}.${summaryId}.summary.json`,
-      );
-
-    const buildEntryAgentContext = (session: OrchestrateSessionState): string => {
-      return [
-        "You are currently acting as the orchestrate entry agent for an active /orchestrate session.",
-        "Do not execute the task. Do not create tasks automatically.",
-        "Your job is to help the user refine task goals and orchestration configuration.",
-        "Ask concise follow-up questions only when important details are missing.",
-        "Remind the user to run /orchestrate summary when they want a structured recap.",
-        "Current draft:",
-        `- task_goal: ${session.draft.task_goal || "(none yet)"}`,
-        `- project_id: ${session.draft.project_id || "(default)"}`,
-        `- workspace_root: ${session.draft.workspace_root || "(default)"}`,
-        `- risk_level: ${session.draft.risk_level}`,
-        `- budget: ${session.draft.budget.max_token_cost},${session.draft.budget.max_execution_time_seconds}`,
-        `- requested_mode: ${session.draft.requested_mode}`,
-        `- deliverables: ${session.draft.deliverables.join(", ") || "(none)"}`,
-      ].join("\n");
+      await writeJsonAtomic(buildSessionFilePath(paths.orchestrateSessionsDir, next.session_key), next);
     };
 
     const resolveWorkspaceConfigForRun = async (params: {
@@ -2256,15 +2171,22 @@ const orchestratorDashboardPlugin = {
           }
           const previous = session.latest_summary;
           const summary = buildSummaryFromDraft(session);
-          const summaryPath = summaryFilePath(sessionKey, summary.summary_id);
+          const summaryPath = buildSummaryFilePath(
+            paths.orchestrateRequestsDir,
+            sessionKey,
+            summary.summary_id,
+          );
           if (previous) {
-            await writeJsonAtomic(summaryFilePath(sessionKey, previous.summary_id), {
+            await writeJsonAtomic(
+              buildSummaryFilePath(paths.orchestrateRequestsDir, sessionKey, previous.summary_id),
+              {
               session_key: sessionKey,
               summary: {
                 ...previous,
                 status: "superseded",
               },
-            });
+              },
+            );
           }
           const next: OrchestrateSessionState = appendSessionHistory(
             {
@@ -2946,7 +2868,11 @@ const orchestratorDashboardPlugin = {
           const strategy = llmPlan.strategy;
           const strategyPath = path.join(paths.orchestrateRequestsDir, `${taskId}.strategy.json`);
           await writeJsonAtomic(strategyPath, strategy);
-          const summaryPath = summaryFilePath(sessionKeyForRun, latestSummary.summary_id);
+          const summaryPath = buildSummaryFilePath(
+            paths.orchestrateRequestsDir,
+            sessionKeyForRun,
+            latestSummary.summary_id,
+          );
           const taskDir = path.join(paths.taskFoldersRoot, taskId);
           const taskDirArg = path.relative(repoRoot, taskDir);
           const strategyPathArg = path.relative(repoRoot, strategyPath);
