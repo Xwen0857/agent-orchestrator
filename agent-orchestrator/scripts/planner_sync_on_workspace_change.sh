@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+source "$ROOT/agent-orchestrator/scripts/planner_state_paths.sh"
 RUNTIME_CONFIG="$ROOT/templates/coordination/orchestrator/execution_runtime.json"
 APPEND_SCRIPT="$ROOT/agent-orchestrator/scripts/append_task_event.sh"
 
@@ -17,7 +18,8 @@ META="$TASK_DIR/meta.json"
 TASK_ID="$(jq -r '.id // ""' "$META")"
 RUN_ROOT="$(jq -r '.run_root // ""' "$META")"
 REPORT="$RUN_ROOT/workspace_change_report.json"
-CHECKLIST="$ROOT/templates/coordination/planner/checklist.md"
+CHECKLIST_TEMPLATE="$ROOT/templates/coordination/planner/checklist.example.md"
+CHECKLIST="$(resolve_planner_checklist_path)"
 [[ -f "$REPORT" ]] || { jq -cn '{status:"skipped",reason:"no_report"}'; exit 0; }
 
 SENSITIVITY="$(jq -r '.sync.workspace_sync_sensitivity // "MEDIUM"' "$RUNTIME_CONFIG" 2>/dev/null || echo MEDIUM)"
@@ -72,10 +74,9 @@ if [[ "$TRIGGER" == true ]]; then
     } >> "$TASK_DIR/work.md"
   fi
 
-  if [[ -f "$CHECKLIST" ]]; then
-    printf '| WS-SYNC-%s | workspace delta sync for %s | planner | UPDATED |  | reconcile run strategy with workspace increments | reason=%s changed=%s key_hits=%s score=%s |\n' \
-      "$(date -u +%Y%m%d%H%M%S)" "$TASK_ID" "$REASON" "$CHANGED" "$KEY_HITS" "$SCORE" >> "$CHECKLIST"
-  fi
+  ensure_planner_checklist_file "$CHECKLIST" "$CHECKLIST_TEMPLATE"
+  printf '| WS-SYNC-%s | workspace delta sync for %s | planner | UPDATED |  | reconcile run strategy with workspace increments | reason=%s changed=%s key_hits=%s score=%s |\n' \
+    "$(date -u +%Y%m%d%H%M%S)" "$TASK_ID" "$REASON" "$CHANGED" "$KEY_HITS" "$SCORE" >> "$CHECKLIST"
 
   jq -cn \
     --arg status "triggered" \

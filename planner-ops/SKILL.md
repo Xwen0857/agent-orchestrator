@@ -22,13 +22,14 @@ description: 负责任务需求接入、任务拆解、分配、进度监控、w
 
 ## 输入文件相对路径
 1. primary 需求入口文件路径：`templates/coordination/planner/primary.md`。
-2. checklist 规划文件路径：`templates/coordination/planner/checklist.md`。
-3. subchecklist 目录路径：`templates/coordination/tasks/subchecklists`。
-4. worker 任务目录路径：`templates/coordination/tasks/worker_tasks`。
-5. 兼容 worker 任务路径（旧）：`templates/coordination/tasks/<worker_id>_tasks.md`。
+2. checklist 运行记录路径：`$AGENT_ORCHESTRATOR_STATE_DIR/planner/checklist.md`（若未设置，则默认 `~/.openclaw-state/agent-orchestrator/planner/checklist.md`）。
+3. checklist 示例模板路径：`templates/coordination/planner/checklist.example.md`。
+4. subchecklist 目录路径：`templates/coordination/tasks/subchecklists`。
+5. worker 任务目录路径：`templates/coordination/tasks/worker_tasks`。
+6. 兼容 worker 任务路径（旧）：`templates/coordination/tasks/<worker_id>_tasks.md`。
 
 ## 输出文件相对路径
-1. checklist 规划文件路径：`templates/coordination/planner/checklist.md`。
+1. checklist 运行记录路径：`$AGENT_ORCHESTRATOR_STATE_DIR/planner/checklist.md`（默认 `~/.openclaw-state/agent-orchestrator/planner/checklist.md`）。
 2. subchecklist 文件路径：`templates/coordination/tasks/subchecklists/<subchecklist_id>.md`。
 3. worker 任务文件路径：`templates/coordination/tasks/worker_tasks/<worker_id>_tasks.md`。
 4. worker 状态文件路径：`templates/coordination/workers/<worker_id>_worker.md`。
@@ -38,7 +39,7 @@ description: 负责任务需求接入、任务拆解、分配、进度监控、w
 
 ## 读取文件相对路径
 1. 读取 `templates/coordination/planner/primary.md` 判断需求是否完整、是否可启动。
-2. 读取 `templates/coordination/planner/checklist.md` 获取阶段目标和验收项。
+2. 读取运行态 checklist（默认 `~/.openclaw-state/agent-orchestrator/planner/checklist.md`）获取阶段目标和验收项；格式参考 `templates/coordination/planner/checklist.example.md`。
 3. 读取 `templates/coordination/tasks/subchecklists` 获取可分配的任务子项。
 4. 读取 `templates/coordination/tasks/worker_tasks` 与旧路径 `templates/coordination/tasks/*.md` 获取执行进度。
 5. 读取 `templates/coordination/testers/tester_logs/<worker_id>_test_logs.md` 获取验收反馈。
@@ -51,7 +52,7 @@ description: 负责任务需求接入、任务拆解、分配、进度监控、w
 5. 启动后应冻结 primary 的核心需求字段，仅允许追加澄清信息。
 
 ## 分解流程（Primary -> Checklist -> Subchecklist -> Worker Tasks）
-1. 第一步：将 `primary.md` 拆解为 `checklist.md`（阶段目标与里程碑）。
+1. 第一步：将 `primary.md` 拆解为运行态 checklist（阶段目标与里程碑，仓库内仅保留 `checklist.example.md` 作为示例）。
 2. 第二步：将每个 checklist 项拆成 `subchecklist` 文件，确保每项可独立验证。
 3. 第三步：将 subchecklist 拆成 worker 可执行任务，写入 `worker_tasks/<worker_id>_tasks.md`。
 4. 第四步：为每个 worker task 标注 `primary_id`、`checklist_item_id`、`subchecklist_id` 追溯链。
@@ -85,7 +86,7 @@ description: 负责任务需求接入、任务拆解、分配、进度监控、w
 
 ## 路径描述
 1. 需求入口路径：`templates/coordination/planner/primary.md`。
-2. 规划清单路径：`templates/coordination/planner/checklist.md`。
+2. 规划清单运行路径：`$AGENT_ORCHESTRATOR_STATE_DIR/planner/checklist.md`（默认 `~/.openclaw-state/agent-orchestrator/planner/checklist.md`）；示例模板：`templates/coordination/planner/checklist.example.md`。
 3. 子任务清单路径：`templates/coordination/tasks/subchecklists`。
 4. worker 任务路径：`templates/coordination/tasks/worker_tasks`。
 5. 兼容 worker 任务路径：`templates/coordination/tasks`。
@@ -107,7 +108,7 @@ description: 负责任务需求接入、任务拆解、分配、进度监控、w
 
 ## 输出文件生命周期
 1. `primary.md`：需求启动前持续编辑，启动后核心字段冻结。
-2. `checklist.md`：每轮规划更新，滚动保留最近12次主要调整。
+2. 运行态 checklist：每轮规划更新，滚动保留最近12次主要调整；该文件不纳入工程仓库。
 3. `subchecklists/*.md`：按阶段更新，阶段关闭后转为只读。
 4. `worker_tasks/*.md`：任务状态变化时更新，保持最新执行状态。
 5. `replacement_log.md` 与 `worker_replacement_mapping.md`：替换事件触发时追加更新。
@@ -117,7 +118,7 @@ description: 负责任务需求接入、任务拆解、分配、进度监控、w
 ```| primary_id | title | scope | constraints | acceptance_criteria | priority | status | start_signal |
 |---|---|---|---|---|---|---|---|
 ```
-2. `templates/coordination/planner/checklist.md` 文件内容格式：
+2. `templates/coordination/planner/checklist.example.md` 示例内容格式：
 ```| checklist_item_id | title | owner_role | status | depends_on | acceptance | notes |
 |---|---|---|---|---|---|---|
 ```
@@ -147,6 +148,6 @@ description: 负责任务需求接入、任务拆解、分配、进度监控、w
 ```
 
 ## 权限声明（用于自动ACL生成）
-- allowed_read_paths: `templates/coordination/planner`, `templates/coordination/tasks/subchecklists`, `templates/coordination/tasks/worker_tasks`, `templates/coordination/workers`, `templates/coordination/worker_lifecycle`, `templates/coordination/tasks/task_folders`, `runtime/workdomains`, `projects`
-- allowed_write_paths: `templates/coordination/planner`, `templates/coordination/tasks/subchecklists`, `templates/coordination/tasks/worker_tasks`, `templates/coordination/workers`, `templates/coordination/worker_lifecycle`, `templates/coordination/tasks/task_folders`, `runtime/workdomains`
+- allowed_read_paths: `templates/coordination/planner`, `templates/coordination/tasks/subchecklists`, `templates/coordination/tasks/worker_tasks`, `templates/coordination/workers`, `templates/coordination/worker_lifecycle`, `templates/coordination/tasks/task_folders`, `runtime/workdomains`, `projects`, `~/.openclaw-state/agent-orchestrator/planner`
+- allowed_write_paths: `templates/coordination/planner`, `templates/coordination/tasks/subchecklists`, `templates/coordination/tasks/worker_tasks`, `templates/coordination/workers`, `templates/coordination/worker_lifecycle`, `templates/coordination/tasks/task_folders`, `runtime/workdomains`, `~/.openclaw-state/agent-orchestrator/planner`
 - forbidden_paths: `templates/coordination/security/acl_denied.ndjson`

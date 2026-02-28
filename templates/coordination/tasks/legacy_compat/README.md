@@ -9,6 +9,6 @@ The authoritative source of truth in V2 is:
 
 Legacy hierarchy remains available as mirrors:
 - templates/coordination/planner/primary.md
-- templates/coordination/planner/checklist.md
+- ~/.openclaw-state/agent-orchestrator/planner/checklist.md (runtime mirror; format example stays in templates/coordination/planner/checklist.example.md)
 - templates/coordination/tasks/subchecklists/
 - templates/coordination/tasks/worker_tasks/

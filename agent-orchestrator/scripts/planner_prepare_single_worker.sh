@@ -16,6 +16,7 @@ if [[ ! -f "$META" ]]; then
 fi
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+source "$ROOT/agent-orchestrator/scripts/planner_state_paths.sh"
 TASK_ID="$(jq -r '.id' "$META")"
 STRATEGY="$TASK_DIR/${TASK_ID}.strategy.json"
 if [[ ! -f "$STRATEGY" ]]; then
@@ -32,7 +33,8 @@ CHECKLIST_ID="CL_${TASK_ID#task_}"
 SUBCHECKLIST_ID="SCL_${TASK_ID#task_}_001"
 
 PRIMARY_FILE="$ROOT/templates/coordination/planner/primary.md"
-CHECKLIST_FILE="$ROOT/templates/coordination/planner/checklist.md"
+CHECKLIST_TEMPLATE_FILE="$ROOT/templates/coordination/planner/checklist.example.md"
+CHECKLIST_FILE="$(resolve_planner_checklist_path)"
 SUBCHECKLIST_FILE="$ROOT/templates/coordination/tasks/subchecklists/${SUBCHECKLIST_ID}.md"
 WORKER_TASKS_FILE="$ROOT/templates/coordination/tasks/worker_tasks/${WORKER_ID}_tasks.md"
 WORKER_LIFECYCLE_FILE="$ROOT/templates/coordination/worker_lifecycle/${WORKER_ID}_lifecycle.md"
@@ -46,12 +48,7 @@ if [[ ! -f "$PRIMARY_FILE" ]]; then
 TABLE
 fi
 
-if [[ ! -f "$CHECKLIST_FILE" ]]; then
-  cat > "$CHECKLIST_FILE" <<'TABLE'
-| checklist_item_id | title | owner_role | status | depends_on | acceptance | notes |
-|---|---|---|---|---|---|---|
-TABLE
-fi
+ensure_planner_checklist_file "$CHECKLIST_FILE" "$CHECKLIST_TEMPLATE_FILE"
 
 if [[ ! -f "$WORKER_TASKS_FILE" ]]; then
   cat > "$WORKER_TASKS_FILE" <<'TABLE'

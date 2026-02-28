@@ -16,6 +16,7 @@ if [[ ! -f "$META" ]]; then
 fi
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+source "$ROOT/agent-orchestrator/scripts/planner_state_paths.sh"
 TASK_ID="$(jq -r '.id' "$META")"
 STRATEGY="$TASK_DIR/${TASK_ID}.strategy.json"
 if [[ ! -f "$STRATEGY" ]]; then
@@ -27,7 +28,8 @@ PROPS="$ROOT/templates/coordination/planner/properties.md"
 RUNTIME_CONFIG="$ROOT/templates/coordination/orchestrator/execution_runtime.json"
 CREATE_TASK_SCRIPT="$ROOT/agent-orchestrator/scripts/create_task_from_strategy.sh"
 PRIMARY_FILE="$ROOT/templates/coordination/planner/primary.md"
-CHECKLIST_FILE="$ROOT/templates/coordination/planner/checklist.md"
+CHECKLIST_TEMPLATE_FILE="$ROOT/templates/coordination/planner/checklist.example.md"
+CHECKLIST_FILE="$(resolve_planner_checklist_path)"
 COMPLETED_CONTEXT_FILE="$ROOT/templates/coordination/tasks/completed_context.ndjson"
 
 TITLE="$(jq -r '.title // .goal // "untitled"' "$STRATEGY")"
@@ -170,12 +172,7 @@ if [[ ! -f "$PRIMARY_FILE" ]]; then
 |---|---|---|---|---|---|---|---|
 TABLE
 fi
-if [[ ! -f "$CHECKLIST_FILE" ]]; then
-  cat > "$CHECKLIST_FILE" <<'TABLE'
-| checklist_item_id | title | owner_role | status | depends_on | acceptance | notes |
-|---|---|---|---|---|---|---|
-TABLE
-fi
+ensure_planner_checklist_file "$CHECKLIST_FILE" "$CHECKLIST_TEMPLATE_FILE"
 
 THREAD_RESERVE_RATIO="$(as_float "$(get_prop thread_reserve_ratio 0.25)" 0.25)"
 SPLIT_TARGET_MIN="$(as_pos_int "$(get_prop split_target_minutes_min 45)" 45)"
