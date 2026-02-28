@@ -30,7 +30,7 @@ describe("orchestrator-dashboard http meta", () => {
         headers: {
           authorization: "Bearer test-token",
         },
-      },
+      } as any,
       res,
     );
 

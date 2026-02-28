@@ -17,11 +17,12 @@ describe("orchestrator-dashboard session commands", () => {
     plugin.register?.(api);
 
     const registeredCommand = getRegisteredCommand();
-    const result = await registeredCommand.handler(
+    expect(registeredCommand).toBeTruthy();
+    const result = (await registeredCommand!.handler(
       createMockCommandContext({
         args: "run build a calculator",
       }),
-    );
+    )) as { text: string };
 
     expect(result.text).toContain("usage: /orchestrate run");
     expect(result.text).toContain("run no longer accepts free text");
@@ -38,13 +39,14 @@ describe("orchestrator-dashboard session commands", () => {
     plugin.register?.(api);
 
     const registeredCommand = getRegisteredCommand();
-    const result = await registeredCommand.handler(
+    expect(registeredCommand).toBeTruthy();
+    const result = (await registeredCommand!.handler(
       createMockCommandContext({
         args: "run",
         sessionKey: "test-session-no-summary",
         messageThreadId: 2,
       }),
-    );
+    )) as { text: string };
 
     expect(result.text).toContain("code: ORCHESTRATE_SUMMARY_NOT_FOUND");
     expect(result.text).toContain("run /orchestrate summary first");

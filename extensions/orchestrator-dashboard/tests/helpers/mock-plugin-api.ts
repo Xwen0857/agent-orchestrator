@@ -1,3 +1,8 @@
+import type {
+  OpenClawPluginApi,
+  PluginCommandContext,
+  PluginCommandDefinition,
+} from "./plugin-test-contract.js";
 import { vi } from "vitest";
 
 type MockPluginApiOptions = {
@@ -6,11 +11,13 @@ type MockPluginApiOptions = {
   runtimeConsistencyMode?: "enforce" | "warn";
 };
 
-export function createMockPluginApi(options: MockPluginApiOptions = {}) {
-  let registeredCommand: any = null;
-  let httpHandler: ((req: any, res: any) => Promise<boolean>) | null = null;
+type RegisteredHttpHandler = Parameters<OpenClawPluginApi["registerHttpHandler"]>[0];
 
-  const api: any = {
+export function createMockPluginApi(options: MockPluginApiOptions = {}) {
+  let registeredCommand: PluginCommandDefinition | null = null;
+  let httpHandler: RegisteredHttpHandler | null = null;
+
+  const api: OpenClawPluginApi = {
     id: "orchestrator-dashboard",
     name: "Orchestrator Dashboard",
     source: "test",
@@ -39,7 +46,7 @@ export function createMockPluginApi(options: MockPluginApiOptions = {}) {
     },
     registerTool: vi.fn(),
     registerHook: vi.fn(),
-    registerHttpHandler: vi.fn((fn: any) => {
+    registerHttpHandler: vi.fn((fn) => {
       httpHandler = fn;
     }),
     registerHttpRoute: vi.fn(),
@@ -48,7 +55,7 @@ export function createMockPluginApi(options: MockPluginApiOptions = {}) {
     registerCli: vi.fn(),
     registerService: vi.fn(),
     registerProvider: vi.fn(),
-    registerCommand: vi.fn((command: any) => {
+    registerCommand: vi.fn((command: PluginCommandDefinition) => {
       registeredCommand = command;
     }),
     resolvePath: (input: string) => input,
@@ -70,5 +77,5 @@ export function createMockCommandContext(overrides: Record<string, unknown> = {}
     sessionKey: "test-session",
     messageThreadId: 1,
     ...overrides,
-  };
+  } satisfies PluginCommandContext;
 }

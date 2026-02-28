@@ -15,6 +15,18 @@ import {
   normalizeFreeTextToStrategy,
   runWhitelistedScript,
 } from "./orchestrate-command.js";
+import {
+  applyMessageToDraft,
+  buildEmptyOrchestrateSession,
+  buildSummaryFromDraft,
+  getRunnableSummary,
+  normalizeOrchestrateSession,
+  parseOrchestrateArgs,
+  renderSessionSummary,
+  resolveConversationSessionKey,
+  validateRunCommandPayload,
+  type OrchestrateSessionState,
+} from "./orchestrate-session.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -329,46 +341,6 @@ function buildRuntimeMismatchMessage(params: {
   ].join("\n");
 }
 
-function parseOrchestrateArgs(argsRaw: string | undefined): {
-  subcommand:
-    | "run"
-    | "status"
-    | "help"
-    | "intake"
-    | "amend"
-    | "kb-sync"
-    | "path"
-    | "start"
-    | "summary"
-    | "stop"
-    | "session";
-  payload: string;
-} {
-  const normalized = (argsRaw ?? "").trim();
-  if (!normalized) {
-    return { subcommand: "help", payload: "" };
-  }
-  const [first, ...rest] = normalized.split(/\s+/);
-  const sub = (first ?? "").toLowerCase();
-  const payload = rest.join(" ").trim();
-  if (
-    sub === "run" ||
-    sub === "status" ||
-    sub === "help" ||
-    sub === "intake" ||
-    sub === "amend" ||
-    sub === "kb-sync" ||
-    sub === "path" ||
-    sub === "start" ||
-    sub === "summary" ||
-    sub === "stop" ||
-    sub === "session"
-  ) {
-    return { subcommand: sub, payload };
-  }
-  return { subcommand: "help", payload: "" };
-}
-
 type WorkspaceConfigSource = "run_flag" | "path_default" | "runtime_default";
 
 type PathStateProjectEntry = {
@@ -381,71 +353,6 @@ type PathState = {
   schema_version: "orchestrate-path-state-v1";
   updated_at: string;
   projects: Record<string, PathStateProjectEntry>;
-};
-
-type OrchestrateConversationStatus = "ACTIVE_DRAFTING" | "SUMMARY_READY" | "RUNNING" | "CLOSED";
-
-type OrchestrateSummary = {
-  summary_id: string;
-  created_at: string;
-  version: number;
-  status: "drafted" | "confirmed" | "superseded" | "consumed";
-  content: {
-    task_goal: string;
-    project_id: string;
-    workspace_root: string;
-    risk_level: "LOW" | "MEDIUM" | "HIGH";
-    budget: {
-      max_token_cost: number;
-      max_execution_time_seconds: number;
-    };
-    requested_mode: "auto" | "single" | "multi";
-    constraints: string[];
-    deliverables: string[];
-    notes: string[];
-  };
-};
-
-type OrchestrateSessionState = {
-  schema_version: "orchestrate-session-v1";
-  session_key: string;
-  channel: string;
-  sender_id: string;
-  status: OrchestrateConversationStatus;
-  started_at: string;
-  updated_at: string;
-  entry_agent: {
-    active: boolean;
-    mode: "conversation_capture";
-  };
-  draft: {
-    goal_raw: string;
-    task_goal: string;
-    project_id: string;
-    workspace_root: string;
-    risk_level: "LOW" | "MEDIUM" | "HIGH";
-    budget: {
-      max_token_cost: number;
-      max_execution_time_seconds: number;
-    };
-    requested_mode: "auto" | "single" | "multi";
-    constraints: string[];
-    deliverables: string[];
-    notes: string[];
-    open_questions: string[];
-  };
-  history: Array<{
-    timestamp: string;
-    role: "user" | "entry_agent";
-    kind: "message" | "summary";
-    content: string;
-  }>;
-  latest_summary?: OrchestrateSummary;
-  last_run?: {
-    task_id: string;
-    started_at: string;
-    summary_id: string;
-  };
 };
 
 function parseKvFlags(payload: string): {
@@ -1892,19 +1799,6 @@ const orchestratorDashboardPlugin = {
       await writeJsonAtomic(paths.pathState, next);
     };
 
-    const resolveConversationSessionKey = (input: unknown): string => {
-      if (!input || typeof input !== "object") {
-        return "";
-      }
-      const record = input as Record<string, unknown>;
-      const commandTargetSessionKey =
-        typeof record.commandTargetSessionKey === "string"
-          ? record.commandTargetSessionKey
-          : "";
-      const sessionKey = typeof record.sessionKey === "string" ? record.sessionKey : "";
-      return (commandTargetSessionKey || sessionKey).trim();
-    };
-
     const sessionFileStem = (sessionKey: string): string => {
       const safe = sessionKey
         .replace(/[^A-Za-z0-9._-]+/gu, "_")
@@ -1916,44 +1810,6 @@ const orchestratorDashboardPlugin = {
 
     const sessionFilePath = (sessionKey: string): string =>
       path.join(paths.orchestrateSessionsDir, `${sessionFileStem(sessionKey)}.json`);
-
-    const buildEmptyOrchestrateSession = (params: {
-      sessionKey: string;
-      channel: string;
-      senderId: string;
-    }): OrchestrateSessionState => {
-      const now = new Date().toISOString();
-      return {
-        schema_version: "orchestrate-session-v1",
-        session_key: params.sessionKey,
-        channel: params.channel,
-        sender_id: params.senderId,
-        status: "ACTIVE_DRAFTING",
-        started_at: now,
-        updated_at: now,
-        entry_agent: {
-          active: true,
-          mode: "conversation_capture",
-        },
-        draft: {
-          goal_raw: "",
-          task_goal: "",
-          project_id: "",
-          workspace_root: "",
-          risk_level: "MEDIUM",
-          budget: {
-            max_token_cost: 50000,
-            max_execution_time_seconds: 3600,
-          },
-          requested_mode: "auto",
-          constraints: [],
-          deliverables: [],
-          notes: [],
-          open_questions: [],
-        },
-        history: [],
-      };
-    };
 
     const readOrchestrateSession = async (
       sessionKey: string,
@@ -1971,197 +1827,11 @@ const orchestratorDashboardPlugin = {
         senderId: "unknown",
       });
       const raw = await readJsonOrDefault<Record<string, unknown>>(sessionPath, fallback);
-      const draftRaw =
-        raw.draft && typeof raw.draft === "object" && !Array.isArray(raw.draft)
-          ? (raw.draft as Record<string, unknown>)
-          : {};
-      const historyRaw = Array.isArray(raw.history) ? raw.history : [];
-      const history: OrchestrateSessionState["history"] = historyRaw
-        .filter((row) => row && typeof row === "object")
-        .map((row) => {
-          const item = row as Record<string, unknown>;
-          return {
-            timestamp: asString(item.timestamp, new Date().toISOString()),
-            role: asString(item.role, "user") === "entry_agent" ? "entry_agent" : "user",
-            kind: asString(item.kind, "message") === "summary" ? "summary" : "message",
-            content: asString(item.content, ""),
-          };
-        });
-      const latestSummaryRaw =
-        raw.latest_summary &&
-        typeof raw.latest_summary === "object" &&
-        !Array.isArray(raw.latest_summary)
-          ? (raw.latest_summary as Record<string, unknown>)
-          : null;
-      let latestSummary: OrchestrateSummary | undefined;
-      if (latestSummaryRaw) {
-        const contentRaw =
-          latestSummaryRaw.content &&
-          typeof latestSummaryRaw.content === "object" &&
-          !Array.isArray(latestSummaryRaw.content)
-            ? (latestSummaryRaw.content as Record<string, unknown>)
-            : {};
-        latestSummary = {
-          summary_id: asString(latestSummaryRaw.summary_id, ""),
-          created_at: asString(latestSummaryRaw.created_at, new Date().toISOString()),
-          version: asPositiveInt(latestSummaryRaw.version, 1),
-          status: ((): OrchestrateSummary["status"] => {
-            const status = asString(latestSummaryRaw.status, "drafted");
-            if (
-              status === "drafted" ||
-              status === "confirmed" ||
-              status === "superseded" ||
-              status === "consumed"
-            ) {
-              return status;
-            }
-            return "drafted";
-          })(),
-          content: {
-            task_goal: asString(contentRaw.task_goal, ""),
-            project_id: asString(contentRaw.project_id, ""),
-            workspace_root: asString(contentRaw.workspace_root, ""),
-            risk_level:
-              asString(contentRaw.risk_level, "MEDIUM") === "LOW"
-                ? "LOW"
-                : asString(contentRaw.risk_level, "MEDIUM") === "HIGH"
-                  ? "HIGH"
-                  : "MEDIUM",
-            budget: {
-              max_token_cost: asPositiveInt(
-                contentRaw.budget && typeof contentRaw.budget === "object"
-                  ? (contentRaw.budget as Record<string, unknown>).max_token_cost
-                  : 50000,
-                50000,
-              ),
-              max_execution_time_seconds: asPositiveInt(
-                contentRaw.budget && typeof contentRaw.budget === "object"
-                  ? (contentRaw.budget as Record<string, unknown>).max_execution_time_seconds
-                  : 3600,
-                3600,
-              ),
-            },
-            requested_mode: ((): "auto" | "single" | "multi" => {
-              const mode = asString(contentRaw.requested_mode, "auto");
-              if (mode === "single" || mode === "multi") {
-                return mode;
-              }
-              return "auto";
-            })(),
-            constraints: Array.isArray(contentRaw.constraints)
-              ? contentRaw.constraints.map((v) => asString(v, "")).filter(Boolean)
-              : [],
-            deliverables: Array.isArray(contentRaw.deliverables)
-              ? contentRaw.deliverables.map((v) => asString(v, "")).filter(Boolean)
-              : [],
-            notes: Array.isArray(contentRaw.notes)
-              ? contentRaw.notes.map((v) => asString(v, "")).filter(Boolean)
-              : [],
-          },
-        };
-      }
-      const lastRunRaw =
-        raw.last_run && typeof raw.last_run === "object" && !Array.isArray(raw.last_run)
-          ? (raw.last_run as Record<string, unknown>)
-          : {};
-      const status = asString(raw.status, "ACTIVE_DRAFTING");
-      return {
-        schema_version: "orchestrate-session-v1",
-        session_key: asString(raw.session_key, sessionKey),
-        channel: asString(raw.channel, "unknown"),
-        sender_id: asString(raw.sender_id, "unknown"),
-        status:
-          status === "SUMMARY_READY" || status === "RUNNING" || status === "CLOSED"
-            ? (status as OrchestrateConversationStatus)
-            : "ACTIVE_DRAFTING",
-        started_at: asString(raw.started_at, new Date().toISOString()),
-        updated_at: asString(raw.updated_at, new Date().toISOString()),
-        entry_agent: {
-          active: true,
-          mode: "conversation_capture",
-        },
-        draft: {
-          goal_raw: asString(draftRaw.goal_raw, ""),
-          task_goal: asString(draftRaw.task_goal, ""),
-          project_id: asString(draftRaw.project_id, ""),
-          workspace_root: asString(draftRaw.workspace_root, ""),
-          risk_level:
-            asString(draftRaw.risk_level, "MEDIUM") === "LOW"
-              ? "LOW"
-              : asString(draftRaw.risk_level, "MEDIUM") === "HIGH"
-                ? "HIGH"
-                : "MEDIUM",
-          budget: {
-            max_token_cost: asPositiveInt(
-              draftRaw.budget && typeof draftRaw.budget === "object"
-                ? (draftRaw.budget as Record<string, unknown>).max_token_cost
-                : 50000,
-              50000,
-            ),
-            max_execution_time_seconds: asPositiveInt(
-              draftRaw.budget && typeof draftRaw.budget === "object"
-                ? (draftRaw.budget as Record<string, unknown>).max_execution_time_seconds
-                : 3600,
-              3600,
-            ),
-          },
-          requested_mode: ((): "auto" | "single" | "multi" => {
-            const mode = asString(draftRaw.requested_mode, "auto");
-            if (mode === "single" || mode === "multi") {
-              return mode;
-            }
-            return "auto";
-          })(),
-          constraints: Array.isArray(draftRaw.constraints)
-            ? draftRaw.constraints.map((v) => asString(v, "")).filter(Boolean)
-            : [],
-          deliverables: Array.isArray(draftRaw.deliverables)
-            ? draftRaw.deliverables.map((v) => asString(v, "")).filter(Boolean)
-            : [],
-          notes: Array.isArray(draftRaw.notes)
-            ? draftRaw.notes.map((v) => asString(v, "")).filter(Boolean)
-            : [],
-          open_questions: Array.isArray(draftRaw.open_questions)
-            ? draftRaw.open_questions.map((v) => asString(v, "")).filter(Boolean)
-            : [],
-        },
-        history,
-        latest_summary: latestSummary,
-        last_run:
-          asString(lastRunRaw.task_id, "") && asString(lastRunRaw.summary_id, "")
-            ? {
-                task_id: asString(lastRunRaw.task_id, ""),
-                started_at: asString(lastRunRaw.started_at, ""),
-                summary_id: asString(lastRunRaw.summary_id, ""),
-              }
-            : undefined,
-      };
+      return normalizeOrchestrateSession(raw, { fallbackSession: fallback });
     };
 
     const writeOrchestrateSession = async (next: OrchestrateSessionState): Promise<void> => {
       await writeJsonAtomic(sessionFilePath(next.session_key), next);
-    };
-
-    const renderSessionSummary = (session: OrchestrateSessionState): string => {
-      const latestSummary = session.latest_summary;
-      return [
-        `session_key: ${session.session_key}`,
-        `status: ${session.status}`,
-        `task_goal: ${session.draft.task_goal || "(none)"}`,
-        `project_id: ${session.draft.project_id || "(default)"}`,
-        `workspace_root: ${session.draft.workspace_root || "(default)"}`,
-        `risk_level: ${session.draft.risk_level}`,
-        `budget: ${session.draft.budget.max_token_cost},${session.draft.budget.max_execution_time_seconds}`,
-        `requested_mode: ${session.draft.requested_mode}`,
-        `deliverables: ${session.draft.deliverables.join(", ") || "(none)"}`,
-        `constraints: ${session.draft.constraints.join(", ") || "(none)"}`,
-        latestSummary
-          ? `latest_summary_id: ${latestSummary.summary_id}`
-          : "latest_summary_id: (none)",
-        latestSummary
-          ? `latest_summary_version: ${String(latestSummary.version)}`
-          : "latest_summary_version: (none)",
-      ].join("\n");
     };
 
     const appendSessionHistory = (
@@ -2216,112 +1886,6 @@ const orchestratorDashboardPlugin = {
         }
       }
       return "";
-    };
-
-    const mergeUnique = (base: string[], incoming: string[]): string[] => {
-      return [...new Set([...base, ...incoming].filter(Boolean))];
-    };
-
-    const applyMessageToDraft = (
-      session: OrchestrateSessionState,
-      content: string,
-    ): OrchestrateSessionState => {
-      const text = content.trim();
-      if (!text) {
-        return session;
-      }
-      const last = session.history[session.history.length - 1];
-      if (last && last.role === "user" && last.kind === "message" && last.content === text) {
-        return session;
-      }
-      const next = structuredClone(session) as OrchestrateSessionState;
-      const now = new Date().toISOString();
-      next.updated_at = now;
-      next.status = next.latest_summary ? "SUMMARY_READY" : "ACTIVE_DRAFTING";
-      next.draft.goal_raw = next.draft.goal_raw ? `${next.draft.goal_raw}\n${text}` : text;
-      next.draft.task_goal = next.draft.task_goal ? `${next.draft.task_goal}\n${text}` : text;
-
-      const lower = text.toLowerCase();
-      if (/\b(high|critical)\b/u.test(lower) || /高风险/u.test(text)) {
-        next.draft.risk_level = "HIGH";
-      } else if (/\b(low)\b/u.test(lower) || /低风险/u.test(text)) {
-        next.draft.risk_level = "LOW";
-      } else if (/\b(medium)\b/u.test(lower) || /中风险/u.test(text)) {
-        next.draft.risk_level = "MEDIUM";
-      }
-
-      if (/(强制单任务|不要拆分|single mode|single task)/u.test(text)) {
-        next.draft.requested_mode = "single";
-      } else if (/(强制\s*multi|强制多任务|并行|拆分|多个模块|multi mode|multi task)/u.test(text)) {
-        next.draft.requested_mode = "multi";
-      } else if (/(自动模式|auto mode)/u.test(text)) {
-        next.draft.requested_mode = "auto";
-      }
-
-      const projectMatch = text.match(/project[_\s-]*id\s*[:=]\s*([A-Za-z0-9._-]+)/iu);
-      if (projectMatch?.[1]) {
-        next.draft.project_id = projectMatch[1];
-      }
-      const workspaceMatch = text.match(/workspace[_\s-]*root\s*[:=]\s*([A-Za-z0-9._/\-]+)/iu);
-      if (workspaceMatch?.[1]) {
-        next.draft.workspace_root = workspaceMatch[1];
-      }
-      const budgetMatch = text.match(/budget\s*[:=]\s*([0-9]+)\s*,\s*([0-9]+)/iu);
-      if (budgetMatch?.[1] && budgetMatch[2]) {
-        next.draft.budget.max_token_cost = asPositiveInt(
-          Number(budgetMatch[1]),
-          next.draft.budget.max_token_cost,
-        );
-        next.draft.budget.max_execution_time_seconds = asPositiveInt(
-          Number(budgetMatch[2]),
-          next.draft.budget.max_execution_time_seconds,
-        );
-      }
-
-      const deliverables: string[] = [];
-      if (/runbook|文档/iu.test(text)) {
-        deliverables.push("RUNBOOK.md");
-      }
-      if (/test|测试/iu.test(text)) {
-        deliverables.push("tests");
-      }
-      if (/websocket|python|服务端|脚本/iu.test(text)) {
-        deliverables.push("source");
-      }
-      next.draft.deliverables = mergeUnique(next.draft.deliverables, deliverables);
-      next.draft.notes = mergeUnique(next.draft.notes, [text]);
-      next.draft.open_questions = next.draft.task_goal ? [] : ["Please describe the task goal."];
-
-      return appendSessionHistory(next, {
-        timestamp: now,
-        role: "user",
-        kind: "message",
-        content: text,
-      });
-    };
-
-    const buildSummaryFromDraft = (session: OrchestrateSessionState): OrchestrateSummary => {
-      const previousVersion = session.latest_summary?.version ?? 0;
-      return {
-        summary_id: `sum_${Date.now().toString(36)}_${randomUUID().replace(/-/gu, "").slice(0, 6)}`,
-        created_at: new Date().toISOString(),
-        version: previousVersion + 1,
-        status: "drafted",
-        content: {
-          task_goal: session.draft.task_goal.trim(),
-          project_id: session.draft.project_id.trim(),
-          workspace_root: session.draft.workspace_root.trim(),
-          risk_level: session.draft.risk_level,
-          budget: {
-            max_token_cost: session.draft.budget.max_token_cost,
-            max_execution_time_seconds: session.draft.budget.max_execution_time_seconds,
-          },
-          requested_mode: session.draft.requested_mode,
-          constraints: [...session.draft.constraints],
-          deliverables: [...session.draft.deliverables],
-          notes: [...session.draft.notes],
-        },
-      };
     };
 
     const summaryFilePath = (sessionKey: string, summaryId: string): string =>
@@ -3314,41 +2878,21 @@ const orchestratorDashboardPlugin = {
         }
 
         if (parsed.subcommand === "run") {
-          if (parsed.payload.trim()) {
-            return {
-              text: [
-                "usage: /orchestrate run",
-                "run no longer accepts free text; use /orchestrate start first",
-              ].join("\n"),
-            };
+          const runPayloadError = validateRunCommandPayload(parsed.payload);
+          if (runPayloadError) {
+            return { text: runPayloadError };
           }
           const sessionKeyForRun = resolveConversationSessionKey(ctx);
           if (!sessionKeyForRun) {
             return { text: "orchestrate run failed: missing session key" };
           }
           const session = await readOrchestrateSession(sessionKeyForRun);
-          const latestSummary = session?.latest_summary;
-          if (
-            !session ||
-            !latestSummary ||
-            latestSummary.status === "superseded" ||
-            latestSummary.status === "consumed"
-          ) {
-            return {
-              text: [
-                "code: ORCHESTRATE_SUMMARY_NOT_FOUND",
-                "message: current session has no usable summary; run /orchestrate summary first",
-              ].join("\n"),
-            };
+          const runnableSummary = getRunnableSummary(session);
+          if (!runnableSummary.ok) {
+            return { text: runnableSummary.error };
           }
-          if (!latestSummary.content.task_goal.trim()) {
-            return {
-              text: [
-                "code: ORCHESTRATE_SUMMARY_NOT_FOUND",
-                "message: latest summary is empty; continue chatting and run /orchestrate summary again",
-              ].join("\n"),
-            };
-          }
+          const activeSession = session as OrchestrateSessionState;
+          const latestSummary = runnableSummary.summary;
 
           const requestedMode = latestSummary.content.requested_mode;
           const taskId = buildTaskId(latestSummary.content.task_goal);
@@ -3441,7 +2985,7 @@ const orchestratorDashboardPlugin = {
             });
 
             await writeOrchestrateSession({
-              ...session,
+              ...activeSession,
               status: "RUNNING",
               updated_at: new Date().toISOString(),
               latest_summary: {
