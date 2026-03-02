@@ -43,6 +43,10 @@ import {
   renderTaskStatusResponse,
 } from "./orchestrate-response.js";
 import {
+  buildRunSuccessResponseParams,
+  buildTaskStatusResponseParams,
+} from "./orchestrate-view-model.js";
+import {
   readOrchestrateSessionStore,
   readPathStateStore,
   writeOrchestrateSessionStore,
@@ -2193,37 +2197,9 @@ const orchestratorDashboardPlugin = {
             loadExecutionRuntime(),
             getExternalRunnerStatus(),
           ]);
-          const splitUnitsPlanned = asPositiveInt(
-            (meta as Record<string, unknown>).split_units_planned,
-            1,
-          );
-          const requestedMode = String(meta.requested_mode ?? "auto");
-          const resolvedMode = String(
-            meta.execution_mode ??
-              (Array.isArray(meta.children) && meta.children.length > 0 ? "multi" : "single"),
-          );
-          const planningDecision =
-            meta.planning_decision &&
-            typeof meta.planning_decision === "object" &&
-            !Array.isArray(meta.planning_decision)
-              ? (meta.planning_decision as Record<string, unknown>)
-              : {};
-          const acl =
-            meta.acl && typeof meta.acl === "object" && !Array.isArray(meta.acl)
-              ? (meta.acl as Record<string, unknown>)
-              : {};
-          const aggregate =
-            meta.aggregate && typeof meta.aggregate === "object" && !Array.isArray(meta.aggregate)
-              ? (meta.aggregate as Record<string, unknown>)
-              : {};
-          const executionRoles =
-            meta.execution_roles &&
-            typeof meta.execution_roles === "object" &&
-            !Array.isArray(meta.execution_roles)
-              ? (meta.execution_roles as Record<string, unknown>)
-              : {};
           return {
-            text: renderTaskStatusResponse({
+            text: renderTaskStatusResponse(
+              buildTaskStatusResponseParams({
               taskId,
               meta,
               runnerStatus,
@@ -2235,13 +2211,6 @@ const orchestratorDashboardPlugin = {
               runnerBatchSize,
               runnerMaxParallel,
               runtimeStats,
-              requestedMode,
-              resolvedMode,
-              planningDecision,
-              splitUnitsPlanned,
-              acl,
-              aggregate,
-              executionRoles,
               lockMtime,
               runtimeConsistency: consistencyInfo?.runtimeConsistency || runtimeConsistency,
               runtimeSignature,
@@ -2251,7 +2220,8 @@ const orchestratorDashboardPlugin = {
               amendmentCount,
               lastAmendment,
               recent,
-            }),
+              }),
+            ),
           };
         }
 
@@ -2711,22 +2681,14 @@ const orchestratorDashboardPlugin = {
               loadExecutionRuntime(),
               getExternalRunnerStatus(),
             ]);
-            const splitUnitsPlanned = asPositiveInt(
-              (meta as Record<string, unknown>).split_units_planned,
-              1,
-            );
             const requestedModeResolved = String(meta.requested_mode ?? requestedMode);
-            const resolvedMode = String(
-              meta.execution_mode ??
-                (Array.isArray(meta.children) && meta.children.length > 0 ? "multi" : "single"),
-            );
-            const planningDecision =
+            const planningDecisionMeta =
               meta.planning_decision &&
               typeof meta.planning_decision === "object" &&
               !Array.isArray(meta.planning_decision)
                 ? (meta.planning_decision as Record<string, unknown>)
                 : {};
-            const aggregate =
+            const aggregateMeta =
               meta.aggregate && typeof meta.aggregate === "object" && !Array.isArray(meta.aggregate)
                 ? (meta.aggregate as Record<string, unknown>)
                 : {};
@@ -2757,10 +2719,16 @@ const orchestratorDashboardPlugin = {
               logical_threads: runtimeStats.logicalThreads,
               effective_worker_threads: runtimeStats.effectiveWorkerThreads,
               requested_mode: requestedModeResolved,
-              resolved_mode: resolvedMode,
-              decision_source: String(planningDecision.decision_source ?? "manual_override"),
-              decision_reason: String(planningDecision.decision_reason ?? ""),
-              split_units_planned: splitUnitsPlanned,
+              resolved_mode: String(
+                meta.execution_mode ??
+                  (Array.isArray(meta.children) && meta.children.length > 0 ? "multi" : "single"),
+              ),
+              decision_source: String(planningDecisionMeta.decision_source ?? "manual_override"),
+              decision_reason: String(planningDecisionMeta.decision_reason ?? ""),
+              split_units_planned: asPositiveInt(
+                (meta as Record<string, unknown>).split_units_planned,
+                1,
+              ),
               parallel_limit: runtimeStats.parallelLimit,
               queue_depth: runtimeStats.queueDepth,
               policy_mode: runtimeStats.policyMode,
@@ -2777,22 +2745,22 @@ const orchestratorDashboardPlugin = {
               scheduling_actor: String(executionRoles.scheduling_actor ?? "scheduler-ops"),
               actor_compat_mode: Boolean(executionRoles.compat_mode ?? false),
               actor_compat_hits: Number(executionRoles.compat_hits ?? 0),
-              aggregate_publish_status: String(aggregate.publish_status ?? "none"),
-              aggregate_manifest: String(aggregate.manifest_path ?? ""),
+              aggregate_publish_status: String(aggregateMeta.publish_status ?? "none"),
+              aggregate_manifest: String(aggregateMeta.manifest_path ?? ""),
               aggregate_audit_status: String(
                 (meta as Record<string, unknown>).aggregate_audit_status ??
-                  (aggregate.publish_status === "audited_pass" ||
-                  aggregate.publish_status === "published"
+                  ((aggregateMeta.publish_status === "audited_pass" ||
+                    aggregateMeta.publish_status === "published")
                     ? "PASS"
-                    : aggregate.publish_status === "audited_fail" ||
-                        aggregate.publish_status === "rolled_back"
+                    : (aggregateMeta.publish_status === "audited_fail" ||
+                        aggregateMeta.publish_status === "rolled_back")
                       ? "FAIL"
                       : ""),
               ),
               aggregate_collisions_count: Number(
                 (meta as Record<string, unknown>).aggregate_collisions_count ?? 0,
               ),
-              aggregate_last_block_reason: String(aggregate.last_block_reason ?? ""),
+              aggregate_last_block_reason: String(aggregateMeta.last_block_reason ?? ""),
               acl_denied_count: Number(
                 (meta.acl as Record<string, unknown> | undefined)?.denied_count ??
                   runtimeStats.aclDeniedCount,
@@ -2842,7 +2810,8 @@ const orchestratorDashboardPlugin = {
             }
 
             return {
-              text: renderRunSuccessResponse({
+              text: renderRunSuccessResponse(
+                buildRunSuccessResponseParams({
                 taskId,
                 sessionKeyForRun,
                 summaryId: latestSummary.summary_id,
@@ -2860,18 +2829,10 @@ const orchestratorDashboardPlugin = {
                 runnerBatchSize,
                 runnerMaxParallel,
                 runtimeStats,
-                requestedMode: requestedModeResolved,
-                resolvedMode,
-                planningDecision,
-                splitUnitsPlanned,
+                requestedModeDefault: requestedModeResolved,
                 meta,
-                workspaceConfigSource: String(
-                  meta.workspace_config_source ?? workspaceResolved.source,
-                ),
-                workspaceValidated: Boolean(
-                  (meta.workspace_validated as boolean | undefined) ?? workspaceResolved.validated,
-                ),
-                aggregate,
+                workspaceConfigSourceDefault: workspaceResolved.source,
+                workspaceValidatedDefault: workspaceResolved.validated,
                 runtimeConsistency: consistencyInfo?.runtimeConsistency || runtimeConsistency,
                 runtimeSignature,
                 runtimeExpectedSignature: runtimeSignatureExpected,
@@ -2883,7 +2844,8 @@ const orchestratorDashboardPlugin = {
                 llmReason: llmPlan.reason,
                 llmAuthMode: llmPlan.authMode,
                 llmKeySource: llmPlan.keySource,
-              }),
+                }),
+              ),
             };
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);

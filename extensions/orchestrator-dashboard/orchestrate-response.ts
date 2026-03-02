@@ -1,4 +1,4 @@
-type RuntimeStatsSnapshot = {
+export type RuntimeStatsSnapshot = {
   logicalThreads: number;
   effectiveWorkerThreads: number;
   parallelLimit: number;
@@ -18,14 +18,14 @@ type RuntimeStatsSnapshot = {
   orchestratorRuntimeProfile: string;
 };
 
-type ExternalRunnerSnapshot = {
+export type ExternalRunnerSnapshot = {
   running: boolean;
   pid: number;
   lastTickAt: string;
   lastExitCode: string;
 };
 
-type TaskStatusResponseParams = {
+export type TaskStatusResponseParams = {
   taskId: string;
   meta: Record<string, unknown>;
   runnerStatus: string;
@@ -55,7 +55,7 @@ type TaskStatusResponseParams = {
   recent: string[];
 };
 
-type RunSuccessResponseParams = {
+export type RunSuccessResponseParams = {
   taskId: string;
   sessionKeyForRun: string;
   summaryId: string;
