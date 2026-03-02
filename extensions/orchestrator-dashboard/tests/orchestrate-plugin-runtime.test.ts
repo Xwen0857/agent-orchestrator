@@ -2,7 +2,7 @@ import { buildOrchestratePluginRuntime } from "../orchestrate-plugin-runtime.js"
 import { describe, expect, it, vi } from "vitest";
 
 describe("orchestrate plugin runtime composer", () => {
-  it("builds normalized command, http, and overview dependency bundles", () => {
+  it("builds normalized command, http, and overview dependency bundles", async () => {
     const api = {
       registerHttpRoute: vi.fn(),
       registerHttpHandler: vi.fn(),
@@ -12,6 +12,33 @@ describe("orchestrate plugin runtime composer", () => {
     const emitEvent = vi.fn(async () => {});
     const runWhitelistedScript = vi.fn(async () => ({ stdout: "", stderr: "" }));
     const runScript = vi.fn(async () => ({ stdout: "", stderr: "" }));
+
+    const runnerController = {
+      getRunnerLockMtime: vi.fn(async () => "mtime"),
+      getExternalRunnerStatus: vi.fn(async () => ({
+        running: false,
+        pid: 0,
+        lastTickAt: "",
+        lastExitCode: "",
+      })),
+      ensureRunnerStarted: vi.fn(async () => ({
+        schedulerStatus: "started" as const,
+        lastTickAt: "",
+        intervalSec: 10,
+      })),
+      getSnapshot: vi.fn(() => ({
+        runnerStatus: "started" as const,
+        runnerLastTickAt: "tick",
+        runnerLastTickResult: "ok" as const,
+        runnerLastTickError: "",
+        runnerIntervalSec: 10,
+        runnerExecutionMode: "local_threads",
+        runnerBatchSize: 4,
+        runnerMaxParallel: 2,
+        runnerTimerActive: false,
+      })),
+      kickoffOnStartup: vi.fn(),
+    };
 
     const runtime = buildOrchestratePluginRuntime({
       api,
@@ -23,7 +50,6 @@ describe("orchestrate plugin runtime composer", () => {
         runnerFallbackEnabled: false,
         requireGatewayAuth: true,
       },
-      runnerTimerActive: false,
       paths: {
         statePaths: {
           pathState: "/repo/path_state.json",
@@ -71,19 +97,45 @@ describe("orchestrate plugin runtime composer", () => {
         readText: vi.fn(),
         writeTextAtomic: vi.fn(),
       },
-      runtime: {
-        getRunnerLockMtime: vi.fn(),
-        loadExecutionRuntime: vi.fn(),
-        getExternalRunnerStatus: vi.fn(),
-        ensureRunnerStarted: vi.fn(),
-        runnerStatus: "started",
-        runnerLastTickAt: "",
-        runnerLastTickResult: "none",
-        runnerLastTickError: "",
-        runnerIntervalSec: 10,
-        runnerExecutionMode: "local_threads",
-        runnerBatchSize: 4,
-        runnerMaxParallel: 2,
+      controllers: {
+        runner: runnerController,
+        execution: {
+          loadExecutionRuntime: vi.fn(async () => ({
+            logicalThreads: 4,
+            effectiveWorkerThreads: 1,
+            parallelLimit: 1,
+            queueDepth: 0,
+            policyMode: "enforce",
+            rolePolicyPath: "/repo/role.json",
+            workdomainRoot: "runtime/workdomains",
+            projectsRoot: "projects",
+            aclDeniedCount: 0,
+            aclLastDeniedAt: "",
+            sandboxEnabled: true,
+            commitGuardEnabled: true,
+            kbImportConfirmRequired: true,
+            kbImportAutoEnabled: false,
+            workspaceSyncSensitivity: "MEDIUM",
+            skillMcpIsolationEnabled: true,
+            protectOrchestratorConfig: true,
+            projectRuntimeProfile: "project_execution",
+            orchestratorRuntimeProfile: "orchestrator_control",
+          })),
+        },
+        consistency: {
+          assertRuntimeConsistency: vi.fn(),
+          getSnapshot: vi.fn(() => ({
+            runtimeConsistency: "ok" as const,
+            runtimeSignature: "sig",
+            runtimeExpectedSignature: "sig",
+          })),
+          getStartupError: vi.fn(() => ""),
+          startupConsistencyPromise: Promise.resolve(null),
+        },
+        agent: {
+          loadAgentRuntimeConfig: vi.fn(),
+          enhanceStrategyWithLlm: vi.fn(),
+        },
       },
       configService: {
         loadCurrentConfig: vi.fn(),
@@ -108,6 +160,8 @@ describe("orchestrate plugin runtime composer", () => {
     expect(runtime.commandDeps.io.readJsonOrDefault).toBe(readJsonOrDefault);
     expect(runtime.commandDeps.runWhitelistedScript).toBe(runWhitelistedScript);
     expect(runtime.commandDeps.emitEvent).toBe(emitEvent);
+    expect(runtime.commandDeps.runtime.runnerStatus).toBe("started");
+    expect(runtime.commandDeps.runtime.ensureRunnerStarted).toBe(runnerController.ensureRunnerStarted);
 
     expect(runtime.httpDeps.api).toBe(api);
     expect(runtime.httpDeps.cfg.requireGatewayAuth).toBe(true);

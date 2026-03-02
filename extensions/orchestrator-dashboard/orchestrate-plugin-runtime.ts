@@ -2,24 +2,16 @@ import type { createOrchestrateCommandHandlers } from "./orchestrate-command-dep
 import type { registerOrchestratorHttpRoutes } from "./orchestrate-http.js";
 import type { registerOrchestratorOverviewGatewayMethod } from "./orchestrate-overview-gateway.js";
 import type { PathState } from "./orchestrate-path.js";
+import type { AgentRuntimeController } from "./orchestrate-agent-runtime.js";
+import type { ExecutionRuntimeReader } from "./orchestrate-execution-runtime.js";
 import type { OrchestrateStatePaths } from "./orchestrate-state.js";
+import type { RuntimeConsistencyController } from "./orchestrate-runtime-consistency.js";
+import type { RunnerRuntimeController } from "./orchestrate-runner-runtime.js";
 import type { OrchestrateSessionState } from "./orchestrate-session.js";
-import type {
-  ExternalRunnerSnapshot,
-  RuntimeStatsSnapshot,
-} from "./orchestrate-response.js";
 
 type CommandDeps = Parameters<typeof createOrchestrateCommandHandlers>[0];
 type HttpDeps = Parameters<typeof registerOrchestratorHttpRoutes>[0];
 type OverviewDeps = Parameters<typeof registerOrchestratorOverviewGatewayMethod>[0];
-
-type CommandCtx = {
-  channel?: string;
-  senderId?: string;
-  messageThreadId?: string | number;
-  sessionKey?: string;
-  commandTargetSessionKey?: string;
-};
 
 type ConfigServiceLike = {
   loadCurrentConfig: HttpDeps["helpers"]["loadCurrentConfig"];
@@ -38,7 +30,6 @@ export type BuildOrchestratePluginRuntimeParams = {
     runnerFallbackEnabled: boolean;
     requireGatewayAuth: boolean;
   };
-  runnerTimerActive: boolean;
   paths: {
     statePaths: OrchestrateStatePaths;
     command: CommandDeps["paths"];
@@ -54,7 +45,12 @@ export type BuildOrchestratePluginRuntimeParams = {
     writePathState: (next: PathState) => Promise<void>;
   };
   io: CommandDeps["io"];
-  runtime: CommandDeps["runtime"];
+  controllers: {
+    runner: RunnerRuntimeController;
+    execution: ExecutionRuntimeReader;
+    consistency: RuntimeConsistencyController;
+    agent: AgentRuntimeController;
+  };
   configService: ConfigServiceLike;
   helpers: {
     emitEvent: (type: string, payload: Record<string, unknown>) => Promise<void>;
@@ -85,19 +81,36 @@ export function buildOrchestratePluginRuntime(
     readText: params.io.readText,
     writeTextAtomic: params.io.writeTextAtomic,
   };
+
   const commandRuntime: CommandDeps["runtime"] = {
-    getRunnerLockMtime: params.runtime.getRunnerLockMtime,
-    loadExecutionRuntime: params.runtime.loadExecutionRuntime,
-    getExternalRunnerStatus: params.runtime.getExternalRunnerStatus,
-    ensureRunnerStarted: params.runtime.ensureRunnerStarted,
-    runnerStatus: params.runtime.runnerStatus,
-    runnerLastTickAt: params.runtime.runnerLastTickAt,
-    runnerLastTickResult: params.runtime.runnerLastTickResult,
-    runnerLastTickError: params.runtime.runnerLastTickError,
-    runnerIntervalSec: params.runtime.runnerIntervalSec,
-    runnerExecutionMode: params.runtime.runnerExecutionMode,
-    runnerBatchSize: params.runtime.runnerBatchSize,
-    runnerMaxParallel: params.runtime.runnerMaxParallel,
+    getRunnerLockMtime: params.controllers.runner.getRunnerLockMtime,
+    loadExecutionRuntime: params.controllers.execution.loadExecutionRuntime,
+    getExternalRunnerStatus: params.controllers.runner.getExternalRunnerStatus,
+    ensureRunnerStarted: params.controllers.runner.ensureRunnerStarted,
+    get runnerStatus() {
+      return params.controllers.runner.getSnapshot().runnerStatus;
+    },
+    get runnerLastTickAt() {
+      return params.controllers.runner.getSnapshot().runnerLastTickAt;
+    },
+    get runnerLastTickResult() {
+      return params.controllers.runner.getSnapshot().runnerLastTickResult;
+    },
+    get runnerLastTickError() {
+      return params.controllers.runner.getSnapshot().runnerLastTickError;
+    },
+    get runnerIntervalSec() {
+      return params.controllers.runner.getSnapshot().runnerIntervalSec;
+    },
+    get runnerExecutionMode() {
+      return params.controllers.runner.getSnapshot().runnerExecutionMode;
+    },
+    get runnerBatchSize() {
+      return params.controllers.runner.getSnapshot().runnerBatchSize;
+    },
+    get runnerMaxParallel() {
+      return params.controllers.runner.getSnapshot().runnerMaxParallel;
+    },
   };
 
   return {
@@ -108,7 +121,7 @@ export function buildOrchestratePluginRuntime(
         runnerEnabled: params.cfg.runnerEnabled,
         runnerFallbackEnabled: params.cfg.runnerFallbackEnabled,
       },
-      runnerTimerActive: params.runnerTimerActive,
+      runnerTimerActive: params.controllers.runner.getSnapshot().runnerTimerActive,
       paths: {
         ...params.paths.command,
       },
