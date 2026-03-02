@@ -17,6 +17,7 @@ fi
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 source "$ROOT/agent-orchestrator/scripts/planner_state_paths.sh"
+source "$ROOT/agent-orchestrator/scripts/planner_strategy_summary.sh"
 TASK_ID="$(jq -r '.id' "$META")"
 STRATEGY="$TASK_DIR/${TASK_ID}.strategy.json"
 if [[ ! -f "$STRATEGY" ]]; then
@@ -25,20 +26,7 @@ if [[ ! -f "$STRATEGY" ]]; then
 fi
 
 TITLE="$(jq -r '.title // .summary_input.task_goal // .goal // "untitled"' "$STRATEGY")"
-TASK_GOAL="$(jq -r '.summary_input.task_goal // .goal // ""' "$STRATEGY")"
-SUMMARY_CONSTRAINTS="$(jq -r '((.summary_input.constraints // []) | map(select(type == "string" and length > 0)) | join("; "))' "$STRATEGY")"
-SUMMARY_DELIVERABLES="$(jq -r '((.summary_input.deliverables // []) | map(select(type == "string" and length > 0)) | join("; "))' "$STRATEGY")"
-SUMMARY_NOTES="$(jq -r '((.summary_input.notes // []) | map(select(type == "string" and length > 0)) | join("; "))' "$STRATEGY")"
-PLANNER_GOAL="$TASK_GOAL"
-if [[ -n "$SUMMARY_CONSTRAINTS" ]]; then
-  PLANNER_GOAL+=$'\n'"Constraints: $SUMMARY_CONSTRAINTS"
-fi
-if [[ -n "$SUMMARY_DELIVERABLES" ]]; then
-  PLANNER_GOAL+=$'\n'"Deliverables: $SUMMARY_DELIVERABLES"
-fi
-if [[ -n "$SUMMARY_NOTES" ]]; then
-  PLANNER_GOAL+=$'\n'"Notes: $SUMMARY_NOTES"
-fi
+load_planner_strategy_summary "$STRATEGY"
 RISK="$(jq -r '.risk_level // "MEDIUM"' "$STRATEGY")"
 NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 PRIMARY_ID="primary_${TASK_ID#task_}"

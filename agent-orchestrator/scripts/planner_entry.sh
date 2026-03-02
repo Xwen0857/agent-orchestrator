@@ -8,6 +8,7 @@ REQUESTED_MODE=""
 APPEND_SCRIPT="$ROOT/agent-orchestrator/scripts/append_task_event.sh"
 PLANNER_SINGLE_SCRIPT="$ROOT/agent-orchestrator/scripts/planner_prepare_single_worker.sh"
 PLANNER_MULTI_SCRIPT="$ROOT/agent-orchestrator/scripts/planner_prepare_workers.sh"
+PLANNER_SUMMARY_SCRIPT="$ROOT/agent-orchestrator/scripts/planner_strategy_summary.sh"
 RUNTIME_CONFIG="$ROOT/templates/coordination/orchestrator/agent_runtime.json"
 
 usage() {
@@ -39,10 +40,11 @@ case "${REQUESTED_MODE:-auto}" in
   *) usage ;;
 esac
 
-if [[ ! -x "$PLANNER_SINGLE_SCRIPT" || ! -x "$PLANNER_MULTI_SCRIPT" || ! -x "$APPEND_SCRIPT" ]]; then
+if [[ ! -x "$PLANNER_SINGLE_SCRIPT" || ! -x "$PLANNER_MULTI_SCRIPT" || ! -x "$APPEND_SCRIPT" || ! -f "$PLANNER_SUMMARY_SCRIPT" ]]; then
   echo "planner dependencies missing"
   exit 1
 fi
+source "$PLANNER_SUMMARY_SCRIPT"
 
 if [[ "$TASK_DIR" != /* ]]; then
   TASK_DIR="$ROOT/$TASK_DIR"
@@ -55,12 +57,13 @@ TASK_ID="$(jq -r '.id // empty' "$META")"
 [[ -n "$TASK_ID" ]] || { echo "task id missing in meta"; exit 1; }
 STRATEGY="$TASK_DIR/${TASK_ID}.strategy.json"
 [[ -f "$STRATEGY" ]] || { echo "strategy missing: $STRATEGY"; exit 1; }
+load_planner_strategy_summary "$STRATEGY"
 
 worker_id="$(printf '%s' "${TASK_ID#task_}" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '_' | sed -E 's/^_+|_+$//g' | cut -c1-48)"
 worker_id="worker_${worker_id:-generic}"
 
 DECISION_JSON="$(
-  python3 - "$STRATEGY" "$META" "$RUNTIME_CONFIG" "${REQUESTED_MODE:-auto}" <<'PY'
+  python3 - "$STRATEGY" "$META" "$RUNTIME_CONFIG" "${REQUESTED_MODE:-auto}" "$TASK_GOAL" "$PLANNER_GOAL" "$SUMMARY_CONSTRAINTS" "$SUMMARY_DELIVERABLES" "$SUMMARY_NOTES" <<'PY'
 import json
 import os
 import re
@@ -72,6 +75,11 @@ strategy_path = Path(sys.argv[1])
 meta_path = Path(sys.argv[2])
 runtime_path = Path(sys.argv[3])
 requested_mode_arg = sys.argv[4]
+task_goal = sys.argv[5]
+planner_goal = sys.argv[6]
+summary_constraints = sys.argv[7]
+summary_deliverables = sys.argv[8]
+summary_notes = sys.argv[9]
 
 strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
 meta = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -79,31 +87,6 @@ runtime = {}
 if runtime_path.exists():
     runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
 
-summary_input = strategy.get("summary_input") or {}
-task_goal = str(summary_input.get("task_goal") or strategy.get("goal", "") or "")
-constraints = [
-    str(v).strip()
-    for v in (summary_input.get("constraints") or [])
-    if isinstance(v, str) and str(v).strip()
-]
-deliverables = [
-    str(v).strip()
-    for v in (summary_input.get("deliverables") or [])
-    if isinstance(v, str) and str(v).strip()
-]
-notes = [
-    str(v).strip()
-    for v in (summary_input.get("notes") or [])
-    if isinstance(v, str) and str(v).strip()
-]
-analysis_parts = [task_goal]
-if constraints:
-    analysis_parts.append("Constraints: " + "; ".join(constraints))
-if deliverables:
-    analysis_parts.append("Deliverables: " + "; ".join(deliverables))
-if notes:
-    analysis_parts.append("Notes: " + "; ".join(notes))
-goal = "\n".join(part for part in analysis_parts if part.strip())
 budget = strategy.get("budget", {}) or {}
 budget_seconds = int(budget.get("max_execution_time_seconds", 3600) or 3600)
 child_task = bool(meta.get("parent_task_id"))
@@ -131,18 +114,18 @@ keyword_map = {
 }
 
 signals = []
-goal_lower = goal.lower()
+goal_lower = planner_goal.lower()
 for label, patterns in keyword_map.items():
     if any(p.lower() in goal_lower for p in patterns):
         signals.append(label)
 
 artifact_count_hint = 1
-if "test" in goal_lower or "测试" in goal:
+if "test" in goal_lower or "测试" in planner_goal:
     artifact_count_hint += 1
-if "doc" in goal_lower or "runbook" in goal_lower or "文档" in goal:
+if "doc" in goal_lower or "runbook" in goal_lower or "文档" in planner_goal:
     artifact_count_hint += 1
 
-estimated_minutes = estimate_minutes(goal, budget_seconds)
+estimated_minutes = estimate_minutes(planner_goal, budget_seconds)
 strong_multi = (
     estimated_minutes >= 180
     or budget_seconds >= 10800
@@ -210,9 +193,9 @@ if llm_enabled and api_key:
                         [
                             "Decide task mode as strict JSON only.",
                             f"Goal: {task_goal}",
-                            f"Constraints: {'; '.join(constraints) if constraints else '(none)'}",
-                            f"Deliverables: {'; '.join(deliverables) if deliverables else '(none)'}",
-                            f"Notes: {'; '.join(notes) if notes else '(none)'}",
+                            f"Constraints: {summary_constraints or '(none)'}",
+                            f"Deliverables: {summary_deliverables or '(none)'}",
+                            f"Notes: {summary_notes or '(none)'}",
                             f"Budget seconds: {budget_seconds}",
                             f"Estimated minutes: {estimated_minutes}",
                             f"Artifact count hint: {artifact_count_hint}",

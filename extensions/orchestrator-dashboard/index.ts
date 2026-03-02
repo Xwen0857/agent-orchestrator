@@ -29,6 +29,9 @@ import { type PathState } from "./orchestrate-path.js";
 import { handlePathSubcommand } from "./orchestrate-path-command.js";
 import { handleRunSubcommand } from "./orchestrate-run-command.js";
 import { handleStatusSubcommand } from "./orchestrate-status-command.js";
+import { handleKbSyncSubcommand } from "./orchestrate-kb-sync-command.js";
+import { handleIntakeSubcommand } from "./orchestrate-intake-command.js";
+import { handleAmendSubcommand } from "./orchestrate-amend-command.js";
 import {
   readOrchestrateSessionStore,
   readPathStateStore,
@@ -2116,265 +2119,52 @@ const orchestratorDashboardPlugin = {
         }
 
         if (parsed.subcommand === "kb-sync") {
-          const normalized = parsed.payload.trim();
-          const [taskIdRaw, actionRaw] = normalized.split(/\s+/);
-          const taskId = (taskIdRaw || "").trim();
-          const action = (actionRaw || "").trim().toLowerCase();
-          if (!taskId || !/^[A-Za-z0-9._-]+$/u.test(taskId)) {
-            return {
-              text: "usage: /orchestrate kb-sync <task_id> [approve|deny|auto-on|auto-off]",
-            };
-          }
-          const taskDir = path.join(paths.taskFoldersRoot, taskId);
-          const metaPath = path.join(taskDir, "meta.json");
-          if (!(await fileExists(metaPath))) {
-            return { text: `task not found: ${taskId}` };
-          }
-          const runtime = await readJsonOrDefault<Record<string, unknown>>(
-            paths.executionRuntime,
-            {},
-          );
-          const kbImport =
-            runtime.kb_import &&
-            typeof runtime.kb_import === "object" &&
-            !Array.isArray(runtime.kb_import)
-              ? (runtime.kb_import as Record<string, unknown>)
-              : {};
-          const confirmRequired = asBoolean(kbImport.confirm_required, true);
-          const autoEnabled = asBoolean(kbImport.auto_enabled, false);
-          const maxFiles = asPositiveInt(kbImport.max_files_per_batch, 20);
-          const maxBytes = asPositiveInt(kbImport.max_bytes_per_batch, 10 * 1024 * 1024);
-
-          const meta = await readJsonOrDefault<Record<string, unknown>>(metaPath, {});
-          const projectId = String(meta.project_id ?? "prj_default");
-          const runRoot = String(
-            meta.run_root ?? path.join(repoRoot, "projects", projectId, "runs", taskId),
-          );
-          const requestId = `kbreq_${Date.now()}_${taskId}`;
-
-          if (action === "auto-on" || action === "auto-off") {
-            const next = {
-              ...runtime,
-              kb_import: {
-                ...kbImport,
-                auto_enabled: action === "auto-on",
-              },
-            };
-            await writeJsonAtomic(paths.executionRuntime, next);
-            await emitEvent("orchestrate.kb_import.requested", {
-              task_id: taskId,
-              request_id: requestId,
-              action,
-              updated_auto_enabled: action === "auto-on",
-            });
-            return {
-              text: `kb_import_auto_enabled: ${action === "auto-on" ? "true" : "false"}`,
-            };
-          }
-
-          const preview = await runWhitelistedScript({
-            repoRoot,
-            scriptName: "kb_import_from_workspace",
-            args: [
-              "--task-id",
-              taskId,
-              "--run-root",
-              runRoot,
-              "--max-files",
-              String(maxFiles),
-              "--max-bytes",
-              String(maxBytes),
-              "--preview",
-            ],
-            timeoutMs: 30_000,
-            maxBufferBytes: 1024 * 1024,
-          });
-          const previewJson = JSON.parse(preview.stdout || "{}") as Record<string, unknown>;
-          const fileCount = asPositiveInt(previewJson.file_count, 0);
-          const totalBytes = asPositiveInt(previewJson.total_bytes, 0);
-          const topFiles = Array.isArray(previewJson.files)
-            ? (previewJson.files as Array<Record<string, unknown>>).slice(0, 5)
-            : [];
-
-          if (action === "deny") {
-            const now = new Date().toISOString();
-            const nextMeta = {
-              ...meta,
-              kb_import: {
-                ...(meta.kb_import && typeof meta.kb_import === "object"
-                  ? (meta.kb_import as Record<string, unknown>)
-                  : {}),
-                last_request_id: requestId,
-                last_decision: "DENY",
-                last_decision_at: now,
-              },
-            };
-            await writeJsonAtomic(metaPath, nextMeta);
-            await emitEvent("orchestrate.kb_import.denied", {
-              task_id: taskId,
-              request_id: requestId,
-              file_count: fileCount,
-              total_bytes: totalBytes,
-            });
-            return { text: `kb-sync denied: task_id=${taskId}` };
-          }
-
-          const shouldAsk = confirmRequired && !autoEnabled && action !== "approve";
-          if (shouldAsk) {
-            await emitEvent("orchestrate.kb_import.requested", {
-              task_id: taskId,
-              request_id: requestId,
-              file_count: fileCount,
-              total_bytes: totalBytes,
-              run_root: runRoot,
-            });
-            return {
-              text: [
-                `task_id: ${taskId}`,
-                `kb_import_confirm_required: true`,
-                `candidate_files: ${String(fileCount)}`,
-                `candidate_bytes: ${String(totalBytes)}`,
-                "top_files:",
-                ...topFiles.map(
-                  (row) => `- ${String(row.path ?? "unknown")} (${String(row.size ?? 0)} bytes)`,
-                ),
-                "",
-                "是否允许本次导入？",
-                `允许: /orchestrate kb-sync ${taskId} approve`,
-                `拒绝: /orchestrate kb-sync ${taskId} deny`,
-              ].join("\n"),
-            };
-          }
-
-          const imported = await runWhitelistedScript({
-            repoRoot,
-            scriptName: "kb_import_from_workspace",
-            args: [
-              "--task-id",
-              taskId,
-              "--run-root",
-              runRoot,
-              "--max-files",
-              String(maxFiles),
-              "--max-bytes",
-              String(maxBytes),
-            ],
-            timeoutMs: 30_000,
-            maxBufferBytes: 1024 * 1024,
-          });
-          const importedJson = JSON.parse(imported.stdout || "{}") as Record<string, unknown>;
-          const now = new Date().toISOString();
-          const nextMeta = {
-            ...meta,
-            kb_import: {
-              ...(meta.kb_import && typeof meta.kb_import === "object"
-                ? (meta.kb_import as Record<string, unknown>)
-                : {}),
-              last_request_id: requestId,
-              last_decision: "ALLOW",
-              last_decision_at: now,
-            },
-          };
-          await writeJsonAtomic(metaPath, nextMeta);
-          await emitEvent("orchestrate.kb_import.approved", {
-            task_id: taskId,
-            request_id: requestId,
-            file_count: asPositiveInt(importedJson.file_count, fileCount),
-            total_bytes: asPositiveInt(importedJson.total_bytes, totalBytes),
-            pending_file: String(importedJson.pending_file ?? ""),
-          });
           return {
-            text: [
-              `task_id: ${taskId}`,
-              `kb-sync: approved`,
-              `pending_file: ${String(importedJson.pending_file ?? "(none)")}`,
-              `file_count: ${String(importedJson.file_count ?? fileCount)}`,
-              `total_bytes: ${String(importedJson.total_bytes ?? totalBytes)}`,
-            ].join("\n"),
+            text: await handleKbSyncSubcommand({
+              payload: parsed.payload,
+              repoRoot,
+              paths: {
+                taskFoldersRoot: paths.taskFoldersRoot,
+                executionRuntime: paths.executionRuntime,
+              },
+              io: {
+                fileExists,
+                readJsonOrDefault,
+                writeJsonAtomic,
+              },
+              runWhitelistedScript,
+              emitEvent,
+            }),
           };
         }
 
         if (parsed.subcommand === "intake") {
-          const freeText = parsed.payload.trim();
-          if (!freeText) {
-            return { text: `missing request text\n\n${renderOrchestrateHelp()}` };
-          }
-          const sessionKey = resolveConversationSessionKey(ctx) || "legacy_intake";
-          const existing =
-            (await readOrchestrateSession(sessionKey)) ??
-            buildEmptyOrchestrateSession({
-              sessionKey,
-              channel: ctx.channel,
-              senderId: ctx.senderId ?? "unknown",
-            });
-          const next = applyMessageToDraft(existing, freeText);
-          await writeOrchestrateSession(next);
-          await emitEvent("orchestrate.intake.created", {
-            session_key: sessionKey,
-            compatibility: "legacy_intake_redirected_to_session",
-          });
           return {
-            text: [
-              "intake is now a legacy helper",
-              "content was added into the current orchestrate session draft",
-              "",
-              renderSessionSummary(next),
-              "",
-              "recommended next steps:",
-              "1. continue chatting in this session",
-              "2. run /orchestrate summary",
-              "3. run /orchestrate run",
-            ].join("\n"),
+            text: await handleIntakeSubcommand({
+              payload: parsed.payload,
+              ctx,
+              readOrchestrateSession,
+              writeOrchestrateSession,
+              emitEvent,
+              renderOrchestrateHelp,
+            }),
           };
         }
 
         if (parsed.subcommand === "amend") {
-          const normalized = parsed.payload.trim();
-          const [taskId, ...rest] = normalized.split(/\s+/);
-          const amendment = rest.join(" ").trim();
-          if (!taskId || !/^[A-Za-z0-9._-]+$/u.test(taskId) || !amendment) {
-            return { text: `usage: /orchestrate amend <task_id> <extra requirement>` };
-          }
-          const taskDir = path.join(paths.taskFoldersRoot, taskId);
-          const metaPath = path.join(taskDir, "meta.json");
-          if (!(await fileExists(metaPath))) {
-            return { text: `task not found: ${taskId}` };
-          }
-          const amendPath = path.join(taskDir, "amendments.md");
-          const line = `- ${new Date().toISOString()} ${amendment}`;
-          if (await fileExists(amendPath)) {
-            const current = await readText(amendPath);
-            await writeTextAtomic(amendPath, `${current.trimEnd()}\n${line}\n`);
-          } else {
-            await writeTextAtomic(amendPath, `# Amendments\n\n${line}\n`);
-          }
-          try {
-            await runWhitelistedScript({
-              repoRoot,
-              scriptName: "append_task_event",
-              args: [
-                path.relative(repoRoot, taskDir),
-                "planner-core",
-                `op_amend_${Date.now()}`,
-                "REQUIREMENT_AMENDED",
-                amendment.replace(/\s+/g, "_"),
-              ],
-            });
-          } catch {
-            // Non-blocking: amendment must still be persisted even if event script fails.
-          }
-          await emitEvent("orchestrate.task.amended", {
-            task_id: taskId,
-            amendment,
-            amendment_path: amendPath,
-          });
           return {
-            text: [
-              `task_id: ${taskId}`,
-              "amendment accepted",
-              `amendment: ${amendment}`,
-              "next: run /orchestrate status <task_id> to track progress",
-            ].join("\n"),
+            text: await handleAmendSubcommand({
+              payload: parsed.payload,
+              repoRoot,
+              taskFoldersRoot: paths.taskFoldersRoot,
+              io: {
+                fileExists,
+                readText,
+                writeTextAtomic,
+              },
+              runWhitelistedScript,
+              emitEvent,
+            }),
           };
         }
 
