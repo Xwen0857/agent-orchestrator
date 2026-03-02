@@ -1,10 +1,16 @@
+/**
+ * Plugin entrypoint for the orchestrator dashboard package.
+ * This file wires host APIs, runtime controllers, command handlers, and HTTP routes
+ * into one registration surface without owning business logic itself.
+ * Non-trivial orchestration rules live in the imported runtime modules.
+ */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runWhitelistedScript } from "./orchestrate-command.js";
-import { parseOrchestrateArgs } from "./orchestrate-session.js";
 import { registerOrchestratorHttpRoutes } from "./orchestrate-http.js";
 import { createOrchestrateCommandHandlers } from "./orchestrate-command-deps.js";
+import { handleOrchestrateCommand } from "./orchestrate-command-router.js";
 import { handleBeforeAgentStartHook } from "./orchestrate-session-agent-hook.js";
 import { registerOrchestratorOverviewGatewayMethod } from "./orchestrate-overview-gateway.js";
 import { buildOrchestratePluginRuntime } from "./orchestrate-plugin-runtime.js";
@@ -63,6 +69,8 @@ const orchestratorDashboardPlugin = {
       bootstrap;
     const runnerTasksRootArg = path.relative(repoRoot, paths.taskFoldersRoot) || ".";
 
+    // Reuse one assembled runtime so command, hook, gateway, and HTTP entrypoints
+    // all observe the same files and consistency checks.
     const emitEvent = createOrchestratorEventEmitter({
       eventsPath,
       io: {
@@ -184,71 +192,13 @@ const orchestratorDashboardPlugin = {
       description: "Run orchestrator entry agent: /orchestrate start|summary|run|status|help",
       acceptsArgs: true,
       requireAuth: true,
-      handler: async (ctx) => {
-        await bootstrapAssembly.controllers.consistency.startupConsistencyPromise;
-        if (bootstrapAssembly.controllers.consistency.getStartupError()) {
-          return { text: bootstrapAssembly.controllers.consistency.getStartupError() };
-        }
-        const parsed = parseOrchestrateArgs(ctx.args);
-        try {
-          await bootstrapAssembly.controllers.consistency.assertRuntimeConsistency("command");
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          return { text: message };
-        }
-        if (parsed.subcommand === "help") {
-          return { text: renderOrchestrateHelp() };
-        }
-
-        if (
-          parsed.subcommand === "start" ||
-          parsed.subcommand === "session" ||
-          parsed.subcommand === "stop" ||
-          parsed.subcommand === "summary"
-        ) {
-          return {
-            text: await commandHandlers.handleSession(parsed.subcommand, ctx),
-          };
-        }
-
-        if (parsed.subcommand === "path") {
-          return {
-            text: await commandHandlers.handlePath(parsed.payload, ctx.senderId),
-          };
-        }
-
-        if (parsed.subcommand === "status") {
-          return {
-            text: await commandHandlers.handleStatus(parsed.payload),
-          };
-        }
-
-        if (parsed.subcommand === "kb-sync") {
-          return {
-            text: await commandHandlers.handleKbSync(parsed.payload),
-          };
-        }
-
-        if (parsed.subcommand === "intake") {
-          return {
-            text: await commandHandlers.handleIntake(parsed.payload, ctx),
-          };
-        }
-
-        if (parsed.subcommand === "amend") {
-          return {
-            text: await commandHandlers.handleAmend(parsed.payload),
-          };
-        }
-
-        if (parsed.subcommand === "run") {
-          return {
-            text: await commandHandlers.handleRun(parsed.payload, ctx),
-          };
-        }
-
-        return { text: renderOrchestrateHelp() };
-      },
+      handler: async (ctx) =>
+        handleOrchestrateCommand({
+          ctx,
+          commandHandlers,
+          consistency: bootstrapAssembly.controllers.consistency,
+          renderOrchestrateHelp,
+        }),
     });
 
     registerOrchestratorHttpRoutes(pluginRuntime.httpDeps);
