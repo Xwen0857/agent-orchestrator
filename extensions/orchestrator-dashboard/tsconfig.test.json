@@ -13,5 +13,5 @@
       "openclaw/plugin-sdk": ["tests/shims/openclaw-plugin-sdk.ts"]
     }
   },
-  "include": ["index.ts", "orchestrate-command.ts", "orchestrate-session.ts", "tests/**/*.ts"]
+  "include": ["index.ts", "orchestrate-command.ts", "orchestrate-path.ts", "orchestrate-session.ts", "tests/**/*.ts"]
 }
