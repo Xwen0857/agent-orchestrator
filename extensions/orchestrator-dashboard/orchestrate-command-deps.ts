@@ -3,8 +3,10 @@ import { handleIntakeSubcommand } from "./orchestrate-intake-command.js";
 import { handleKbSyncSubcommand } from "./orchestrate-kb-sync-command.js";
 import { handlePathSubcommand } from "./orchestrate-path-command.js";
 import { handleRunSubcommand } from "./orchestrate-run-command.js";
+import { handleSessionSubcommand } from "./orchestrate-session-command.js";
 import { handleStatusSubcommand } from "./orchestrate-status-command.js";
 import type { PathState } from "./orchestrate-path.js";
+import type { OrchestrateStateIo, OrchestrateStatePaths } from "./orchestrate-state.js";
 import type { OrchestrateSessionState } from "./orchestrate-session.js";
 import type {
   ExternalRunnerSnapshot,
@@ -38,6 +40,7 @@ type CreateOrchestrateCommandHandlersParams = {
   writeOrchestrateSession: (next: OrchestrateSessionState) => Promise<void>;
   readPathState: () => Promise<PathState>;
   writePathState: (next: PathState) => Promise<void>;
+  statePaths: OrchestrateStatePaths;
   io: {
     fileExists: (targetPath: string) => Promise<boolean>;
     readJsonOrDefault: <T>(targetPath: string, fallback: T) => Promise<T>;
@@ -83,7 +86,25 @@ type CreateOrchestrateCommandHandlersParams = {
 export function createOrchestrateCommandHandlers(
   params: CreateOrchestrateCommandHandlersParams,
 ) {
+  const stateIo: OrchestrateStateIo = {
+    fileExists: params.io.fileExists,
+    readJsonOrDefault: params.io.readJsonOrDefault,
+    writeJsonAtomic: params.io.writeJsonAtomic,
+  };
   return {
+    handleSession: async (
+      subcommand: "start" | "session" | "stop" | "summary",
+      ctx: CommandCtx,
+    ): Promise<string> =>
+      handleSessionSubcommand({
+        subcommand,
+        ctx,
+        paths: params.statePaths,
+        io: stateIo,
+        readOrchestrateSession: params.readOrchestrateSession,
+        writeOrchestrateSession: params.writeOrchestrateSession,
+        emitEvent: params.emitEvent,
+      }),
     handlePath: async (payload: string, senderId?: string): Promise<string> => {
       const runtimeStats = await params.runtime.loadExecutionRuntime();
       return handlePathSubcommand({

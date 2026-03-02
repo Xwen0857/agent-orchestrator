@@ -14,14 +14,9 @@ import {
 } from "./orchestrate-command.js";
 import {
   applyMessageToDraft,
-  appendSessionHistory,
   buildEntryAgentContext,
-  buildEmptyOrchestrateSession,
-  buildSummaryFromDraft,
-  buildSummaryFilePath,
   extractLatestUserMessage,
   parseOrchestrateArgs,
-  renderSessionSummary,
   resolveConversationSessionKey,
   type OrchestrateSessionState,
 } from "./orchestrate-session.js";
@@ -33,8 +28,12 @@ import {
   readPathStateStore,
   writeOrchestrateSessionStore,
   writePathStateStore,
-  writeSummarySnapshotStore,
 } from "./orchestrate-state.js";
+import {
+  createConfigService,
+  updateListKvText,
+  updatePlainKvText,
+} from "./orchestrate-config-service.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -77,13 +76,6 @@ type AgentRuntimeConfig = {
     timeoutMs: number;
     systemPrompt: string;
   };
-};
-
-type ValidationIssue = {
-  source: "plannerCurrent" | "plannerProperties" | "auditPolicy" | "runtime";
-  key: string;
-  level: "ERROR" | "WARN";
-  message: string;
 };
 
 const DEFAULT_REPO_ROOT = process.env.OPENCLAW_ORCHESTRATOR_REPO_ROOT?.trim() || process.cwd();
@@ -130,9 +122,6 @@ const configSchema = {
     },
   },
 };
-
-const KV_RE = /^([A-Za-z0-9_./-]+):\s*(.*)$/;
-const LIST_KV_RE = /^-\s+([A-Za-z0-9_./-]+):\s*(.*)$/;
 
 function parsePluginConfig(value: unknown): DashboardPluginConfig {
   const raw =
@@ -401,135 +390,6 @@ async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> 
   await writeTextAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function parsePlainKv(text: string): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const lineRaw of text.split(/\r?\n/)) {
-    const line = lineRaw.trim();
-    if (!line || line.startsWith("#")) {
-      continue;
-    }
-    const match = line.match(KV_RE);
-    if (!match) {
-      continue;
-    }
-    out[match[1] ?? ""] = coerce(match[2] ?? "");
-  }
-  return out;
-}
-
-function parseListKv(text: string): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const lineRaw of text.split(/\r?\n/)) {
-    const line = lineRaw.trim();
-    if (!line) {
-      continue;
-    }
-    const match = line.match(LIST_KV_RE);
-    if (!match) {
-      continue;
-    }
-    out[match[1] ?? ""] = coerce(match[2] ?? "");
-  }
-  return out;
-}
-
-function coerce(value: string): unknown {
-  const v = value.trim();
-  if (v === "") {
-    return null;
-  }
-  if (v === "true") {
-    return true;
-  }
-  if (v === "false") {
-    return false;
-  }
-  const asNum = Number(v);
-  if (!Number.isNaN(asNum) && /^-?\d+(\.\d+)?$/.test(v)) {
-    return asNum;
-  }
-  return v;
-}
-
-function stringifyValue(value: unknown): string {
-  if (value === null || value === undefined) {
-    return "";
-  }
-  if (typeof value === "boolean") {
-    return value ? "true" : "false";
-  }
-  if (typeof value === "object") {
-    return JSON.stringify(value);
-  }
-  return String(value);
-}
-
-function updatePlainKvText(original: string, values: Record<string, unknown>): string {
-  const remaining = new Map<string, string>();
-  for (const [key, value] of Object.entries(values)) {
-    remaining.set(key, stringifyValue(value));
-  }
-
-  const out: string[] = [];
-  for (const lineRaw of original.split(/\r?\n/)) {
-    const trimmed = lineRaw.trim();
-    const match = trimmed.match(KV_RE);
-    if (match) {
-      const key = match[1] ?? "";
-      if (remaining.has(key)) {
-        out.push(`${key}: ${remaining.get(key) ?? ""}`);
-        remaining.delete(key);
-        continue;
-      }
-    }
-    out.push(lineRaw);
-  }
-
-  if (remaining.size > 0) {
-    if (out.length > 0 && out[out.length - 1]?.trim() !== "") {
-      out.push("");
-    }
-    for (const [key, value] of [...remaining.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-      out.push(`${key}: ${value}`);
-    }
-  }
-
-  return `${out.join("\n").replace(/\n+$/u, "")}\n`;
-}
-
-function updateListKvText(original: string, values: Record<string, unknown>): string {
-  const remaining = new Map<string, string>();
-  for (const [key, value] of Object.entries(values)) {
-    remaining.set(key, stringifyValue(value));
-  }
-
-  const out: string[] = [];
-  for (const lineRaw of original.split(/\r?\n/)) {
-    const trimmed = lineRaw.trim();
-    const match = trimmed.match(LIST_KV_RE);
-    if (match) {
-      const key = match[1] ?? "";
-      if (remaining.has(key)) {
-        out.push(`- ${key}: ${remaining.get(key) ?? ""}`);
-        remaining.delete(key);
-        continue;
-      }
-    }
-    out.push(lineRaw);
-  }
-
-  if (remaining.size > 0) {
-    if (out.length > 0 && out[out.length - 1]?.trim() !== "") {
-      out.push("");
-    }
-    for (const [key, value] of [...remaining.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-      out.push(`- ${key}: ${value}`);
-    }
-  }
-
-  return `${out.join("\n").replace(/\n+$/u, "")}\n`;
-}
-
 async function readNdjson(filePath: string): Promise<Array<Record<string, unknown>>> {
   if (!(await fileExists(filePath))) {
     return [];
@@ -545,44 +405,6 @@ async function readNdjson(filePath: string): Promise<Array<Record<string, unknow
 async function appendNdjson(filePath: string, row: Record<string, unknown>): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.appendFile(filePath, `${JSON.stringify(row)}\n`, "utf8");
-}
-
-function inferRisk(
-  before: Record<string, unknown>,
-  next: Record<string, unknown>,
-  policyBefore: Record<string, unknown>,
-  policyNext: Record<string, unknown>,
-  propsBefore: Record<string, unknown>,
-  propsNext: Record<string, unknown>,
-): "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" {
-  const highKeys = [
-    "transition_script",
-    "audit_gate_script",
-    "approval_grant_script",
-    "config_rollback_script",
-  ];
-  if (highKeys.some((key) => before[key] !== next[key])) {
-    return "HIGH";
-  }
-
-  const beforeRules = Array.isArray(policyBefore.rules) ? policyBefore.rules : [];
-  const nextRules = Array.isArray(policyNext.rules) ? policyNext.rules : [];
-  if (JSON.stringify(beforeRules) !== JSON.stringify(nextRules)) {
-    const disabledCritical = nextRules.some((rule) => {
-      if (!rule || typeof rule !== "object") {
-        return false;
-      }
-      const record = rule as Record<string, unknown>;
-      return record.tier === "CRITICAL" && record.enabled === false;
-    });
-    return disabledCritical ? "CRITICAL" : "HIGH";
-  }
-
-  if (JSON.stringify(propsBefore) !== JSON.stringify(propsNext)) {
-    return "MEDIUM";
-  }
-
-  return "LOW";
 }
 
 async function runScript(
@@ -1532,18 +1354,18 @@ const orchestratorDashboardPlugin = {
       });
     };
 
-    const loadCurrentConfig = async () => {
-      const [currentRaw, propsRaw, policy] = await Promise.all([
-        readText(paths.plannerCurrent),
-        readText(paths.plannerProperties),
-        readJsonOrDefault<Record<string, unknown>>(paths.auditPolicy, {}),
-      ]);
-      return {
-        plannerCurrent: parsePlainKv(currentRaw),
-        plannerProperties: parseListKv(propsRaw),
-        auditPolicy: policy,
-      };
-    };
+    const configService = createConfigService({
+      paths: {
+        plannerCurrent: paths.plannerCurrent,
+        plannerProperties: paths.plannerProperties,
+        auditPolicy: paths.auditPolicy,
+      },
+      lockPath,
+      io: {
+        readText,
+        readJsonOrDefault,
+      },
+    });
 
     const commandHandlers = createOrchestrateCommandHandlers({
       repoRoot,
@@ -1564,6 +1386,11 @@ const orchestratorDashboardPlugin = {
       writeOrchestrateSession,
       readPathState,
       writePathState,
+      statePaths: {
+        pathState: paths.pathState,
+        orchestrateSessionsDir: paths.orchestrateSessionsDir,
+        orchestrateRequestsDir: paths.orchestrateRequestsDir,
+      },
       io: {
         fileExists,
         readJsonOrDefault,
@@ -1593,132 +1420,6 @@ const orchestratorDashboardPlugin = {
       renderRequiredConfigChecklist,
       renderOrchestrateHelp,
     });
-
-    const validateDraft = async (draftInput: unknown) => {
-      const draft =
-        draftInput && typeof draftInput === "object" && !Array.isArray(draftInput)
-          ? (draftInput as Record<string, unknown>)
-          : {};
-
-      const plannerCurrent =
-        draft.plannerCurrent &&
-        typeof draft.plannerCurrent === "object" &&
-        !Array.isArray(draft.plannerCurrent)
-          ? (draft.plannerCurrent as Record<string, unknown>)
-          : {};
-      const plannerProperties =
-        draft.plannerProperties &&
-        typeof draft.plannerProperties === "object" &&
-        !Array.isArray(draft.plannerProperties)
-          ? (draft.plannerProperties as Record<string, unknown>)
-          : {};
-      const auditPolicy =
-        draft.auditPolicy &&
-        typeof draft.auditPolicy === "object" &&
-        !Array.isArray(draft.auditPolicy)
-          ? (draft.auditPolicy as Record<string, unknown>)
-          : {};
-
-      const base = await loadCurrentConfig();
-
-      const issues: ValidationIssue[] = [];
-      for (const key of ["version", "state_machine", "transition_script", "audit_gate_script"]) {
-        const value = plannerCurrent[key];
-        if (value === undefined || value === null || String(value).trim() === "") {
-          issues.push({
-            source: "plannerCurrent",
-            key,
-            level: "ERROR",
-            message: "required key missing",
-          });
-        }
-      }
-
-      for (const key of [
-        "worker_timeout_minutes",
-        "pass_rate_window_size",
-        "pass_rate_replace_threshold",
-        "budget_warn_threshold_ratio",
-        "budget_block_threshold_ratio",
-        "dashboard_refresh_minutes",
-        "health_check_interval_minutes",
-        "stale_in_progress_minutes",
-        "keeper_cycle_minutes",
-      ]) {
-        const value = plannerProperties[key];
-        if (value === undefined || value === null || String(value).trim() === "") {
-          continue;
-        }
-        if (Number.isNaN(Number(value))) {
-          issues.push({
-            source: "plannerProperties",
-            key,
-            level: "ERROR",
-            message: "must be numeric",
-          });
-        }
-      }
-
-      if (!Array.isArray(auditPolicy.rules)) {
-        issues.push({
-          source: "auditPolicy",
-          key: "rules",
-          level: "ERROR",
-          message: "rules must be a list",
-        });
-      }
-
-      const changedKeys = {
-        plannerCurrent: Object.keys({ ...base.plannerCurrent, ...plannerCurrent }).filter(
-          (key) => base.plannerCurrent[key] !== plannerCurrent[key],
-        ),
-        plannerProperties: Object.keys({ ...base.plannerProperties, ...plannerProperties }).filter(
-          (key) => base.plannerProperties[key] !== plannerProperties[key],
-        ),
-        auditPolicy:
-          JSON.stringify(base.auditPolicy) === JSON.stringify(auditPolicy)
-            ? []
-            : ["rules", "version"],
-      };
-
-      const riskLevel = inferRisk(
-        base.plannerCurrent,
-        plannerCurrent,
-        base.auditPolicy,
-        auditPolicy,
-        base.plannerProperties,
-        plannerProperties,
-      );
-      const valid = !issues.some((issue) => issue.level === "ERROR");
-
-      return {
-        valid,
-        requiresApproval: riskLevel === "HIGH" || riskLevel === "CRITICAL",
-        riskLevel,
-        issues,
-        changedKeys,
-      };
-    };
-
-    const acquireLock = async (): Promise<boolean> => {
-      await fs.mkdir(path.dirname(lockPath), { recursive: true });
-      try {
-        const handle = await fs.open(lockPath, "wx");
-        await handle.writeFile(String(process.pid));
-        await handle.close();
-        return true;
-      } catch {
-        return false;
-      }
-    };
-
-    const releaseLock = async (): Promise<void> => {
-      try {
-        await fs.unlink(lockPath);
-      } catch {
-        // ignore
-      }
-    };
 
     api.on("before_agent_start", async (event, ctx) => {
       const sessionKey = (ctx.sessionKey ?? "").trim();
@@ -1771,150 +1472,14 @@ const orchestratorDashboardPlugin = {
           return { text: renderOrchestrateHelp() };
         }
 
-        if (parsed.subcommand === "start") {
-          const sessionKey = resolveConversationSessionKey(ctx);
-          if (!sessionKey) {
-            return { text: "orchestrate start failed: missing session key" };
-          }
-          const existing = await readOrchestrateSession(sessionKey);
-          if (existing && existing.status !== "CLOSED") {
-            return {
-              text: [
-                "orchestrate session already active",
-                renderSessionSummary(existing),
-                "",
-                "continue by sending normal messages, then use /orchestrate summary",
-              ].join("\n"),
-            };
-          }
-          const created = buildEmptyOrchestrateSession({
-            sessionKey,
-            channel: ctx.channel,
-            senderId: ctx.senderId ?? "unknown",
-          });
-          await writeOrchestrateSession(created);
-          await emitEvent("orchestrate.session.started", {
-            session_key: sessionKey,
-            channel: ctx.channel,
-            sender_id: ctx.senderId ?? "unknown",
-          });
+        if (
+          parsed.subcommand === "start" ||
+          parsed.subcommand === "session" ||
+          parsed.subcommand === "stop" ||
+          parsed.subcommand === "summary"
+        ) {
           return {
-            text: [
-              "orchestrate mode activated",
-              renderSessionSummary(created),
-              "",
-              "send normal messages to describe the task and configuration",
-              "use /orchestrate summary when you want a structured recap",
-            ].join("\n"),
-          };
-        }
-
-        if (parsed.subcommand === "session") {
-          const sessionKey = resolveConversationSessionKey(ctx);
-          if (!sessionKey) {
-            return { text: "orchestrate session failed: missing session key" };
-          }
-          const session = await readOrchestrateSession(sessionKey);
-          if (!session || session.status === "CLOSED") {
-            return { text: "no active orchestrate session\n\nuse /orchestrate start" };
-          }
-          return { text: renderSessionSummary(session) };
-        }
-
-        if (parsed.subcommand === "stop") {
-          const sessionKey = resolveConversationSessionKey(ctx);
-          if (!sessionKey) {
-            return { text: "orchestrate stop failed: missing session key" };
-          }
-          const session = await readOrchestrateSession(sessionKey);
-          if (!session) {
-            return { text: "no active orchestrate session" };
-          }
-          const next: OrchestrateSessionState = {
-            ...session,
-            status: "CLOSED",
-            updated_at: new Date().toISOString(),
-          };
-          await writeOrchestrateSession(next);
-          await emitEvent("orchestrate.session.closed", {
-            session_key: sessionKey,
-            reason: "user_stop",
-          });
-          return { text: "orchestrate session closed" };
-        }
-
-        if (parsed.subcommand === "summary") {
-          const sessionKey = resolveConversationSessionKey(ctx);
-          if (!sessionKey) {
-            return { text: "orchestrate summary failed: missing session key" };
-          }
-          const session = await readOrchestrateSession(sessionKey);
-          if (!session || session.status === "CLOSED") {
-            return { text: "no active orchestrate session\n\nuse /orchestrate start" };
-          }
-          if (!session.draft.task_goal.trim()) {
-            return {
-              text: "cannot create summary: task goal is empty\n\nsend normal messages to describe the task first",
-            };
-          }
-          const previous = session.latest_summary;
-          const summary = buildSummaryFromDraft(session);
-          const summaryPath = buildSummaryFilePath(paths.orchestrateRequestsDir, sessionKey, summary.summary_id);
-          if (previous) {
-            await writeSummarySnapshotStore({
-              io: { fileExists, readJsonOrDefault, writeJsonAtomic },
-              paths,
-              sessionKey,
-              summary: {
-                ...previous,
-                status: "superseded",
-              },
-            });
-          }
-          const next: OrchestrateSessionState = appendSessionHistory(
-            {
-              ...session,
-              status: "SUMMARY_READY",
-              updated_at: new Date().toISOString(),
-              latest_summary: summary,
-            },
-            {
-              timestamp: summary.created_at,
-              role: "entry_agent",
-              kind: "summary",
-              content: summary.summary_id,
-            },
-          );
-          await writeSummarySnapshotStore({
-            io: { fileExists, readJsonOrDefault, writeJsonAtomic },
-            paths,
-            sessionKey,
-            summary,
-          });
-          await writeOrchestrateSession(next);
-          await emitEvent("orchestrate.session.summary_created", {
-            session_key: sessionKey,
-            summary_id: summary.summary_id,
-            summary_path: summaryPath,
-            version: summary.version,
-          });
-          return {
-            text: [
-              `summary_id: ${summary.summary_id}`,
-              `summary_version: ${String(summary.version)}`,
-              `task_goal: ${summary.content.task_goal}`,
-              `project_id: ${summary.content.project_id || "(default)"}`,
-              `workspace_root: ${summary.content.workspace_root || "(default)"}`,
-              `risk_level: ${summary.content.risk_level}`,
-              `budget: ${summary.content.budget.max_token_cost},${summary.content.budget.max_execution_time_seconds}`,
-              `requested_mode: ${summary.content.requested_mode}`,
-              `deliverables: ${summary.content.deliverables.join(", ") || "(none)"}`,
-              `constraints: ${summary.content.constraints.join(", ") || "(none)"}`,
-              `summary_path: ${summaryPath}`,
-              "",
-              "if you want changes, keep chatting and run /orchestrate summary again",
-              "when ready, run /orchestrate run",
-            ].join("\n"),
+            text: await commandHandlers.handleSession(parsed.subcommand, ctx),
           };
         }
 
@@ -1995,10 +1560,10 @@ const orchestratorDashboardPlugin = {
         eventsPath,
       },
       helpers: {
-        loadCurrentConfig,
-        validateDraft,
-        acquireLock,
-        releaseLock,
+        loadCurrentConfig: configService.loadCurrentConfig,
+        validateDraft: configService.validateDraft,
+        acquireLock: configService.acquireLock,
+        releaseLock: configService.releaseLock,
         emitEvent,
         runScript,
         updatePlainKvText,
