@@ -33,16 +33,15 @@ import {
   type OrchestrateSessionState,
 } from "./orchestrate-session.js";
 import {
-  buildEmptyPathState,
-  isSafeProjectId,
-  normalizePathState,
-  parseKvFlags,
   resolveWorkspaceConfigForRun,
-  resolveWorkspaceUnderProjects,
-  validateWorkspaceRootRelative,
   type PathState,
   type WorkspaceConfigSource,
 } from "./orchestrate-path.js";
+import { handlePathSubcommand } from "./orchestrate-path-command.js";
+import {
+  renderRunSuccessResponse,
+  renderTaskStatusResponse,
+} from "./orchestrate-response.js";
 import {
   readOrchestrateSessionStore,
   readPathStateStore,
@@ -2074,94 +2073,16 @@ const orchestratorDashboardPlugin = {
         }
 
         if (parsed.subcommand === "path") {
-          const { flags, positionals } = parseKvFlags(parsed.payload);
-          const action = (positionals[0] ?? "").toLowerCase();
-          const projectId = (flags["project-id"] ?? "").trim();
-          const workspaceRoot = (flags["workspace-root"] ?? "").trim();
-
-          if (!action || !["set", "get", "clear", "list"].includes(action)) {
-            return { text: "usage: /orchestrate path set|get|clear|list ..." };
-          }
-          if (action !== "list") {
-            if (!projectId || !isSafeProjectId(projectId)) {
-              return { text: "path command requires valid --project-id" };
-            }
-          }
-
           const runtimeStats = await loadExecutionRuntime();
-          const state = await readPathState();
-
-          if (action === "list") {
-            const rows = Object.entries(state.projects)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(
-                ([pid, row]) =>
-                  `- ${pid} workspace_root=${row.workspace_root} updated_at=${row.updated_at} updated_by=${row.updated_by}`,
-              );
-            return {
-              text: [
-                `schema_version: ${state.schema_version}`,
-                `updated_at: ${state.updated_at}`,
-                rows.length > 0 ? "projects:" : "projects: (none)",
-                ...rows,
-              ].join("\n"),
-            };
-          }
-
-          if (action === "get") {
-            const row = state.projects[projectId];
-            if (!row) {
-              return { text: `project_id: ${projectId}\nworkspace_root: (not set)` };
-            }
-            return {
-              text: [
-                `project_id: ${projectId}`,
-                `workspace_root: ${row.workspace_root}`,
-                `updated_at: ${row.updated_at}`,
-                `updated_by: ${row.updated_by}`,
-              ].join("\n"),
-            };
-          }
-
-          if (action === "clear") {
-            if (state.projects[projectId]) {
-              delete state.projects[projectId];
-              state.updated_at = new Date().toISOString();
-              await writePathState(state);
-            }
-            return { text: `project_id: ${projectId}\nworkspace_root: (cleared)` };
-          }
-
-          const err = validateWorkspaceRootRelative(workspaceRoot);
-          if (err) {
-            return { text: `invalid --workspace-root: ${err}` };
-          }
-          try {
-            resolveWorkspaceUnderProjects({
-              repoRoot,
-              projectsRootRel: runtimeStats.projectsRoot,
-              workspaceRootRel: workspaceRoot,
-            });
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            return { text: `invalid --workspace-root: ${message}` };
-          }
-
-          const updatedAt = new Date().toISOString();
-          state.projects[projectId] = {
-            workspace_root: workspaceRoot,
-            updated_at: updatedAt,
-            updated_by: ctx.senderId?.trim() || "session_or_actor",
-          };
-          state.updated_at = updatedAt;
-          await writePathState(state);
           return {
-            text: [
-              `project_id: ${projectId}`,
-              `workspace_root: ${workspaceRoot}`,
-              `projects_root: ${runtimeStats.projectsRoot}`,
-              "status: set",
-            ].join("\n"),
+            text: await handlePathSubcommand({
+              payload: parsed.payload,
+              senderId: ctx.senderId,
+              repoRoot,
+              projectsRoot: runtimeStats.projectsRoot,
+              readPathState,
+              writePathState,
+            }),
           };
         }
 
@@ -2302,77 +2223,35 @@ const orchestratorDashboardPlugin = {
               ? (meta.execution_roles as Record<string, unknown>)
               : {};
           return {
-            text: [
-              `task_id: ${taskId}`,
-              `state: ${String(meta.state ?? "UNKNOWN")}`,
-              `version: ${String(meta.version ?? "n/a")}`,
-              `scheduler_status: ${runnerStatus}`,
-              `last_tick_at: ${runnerLastTickAt || "(none)"}`,
-              `last_tick_result: ${runnerLastTickResult}${runnerLastTickError ? ` (${runnerLastTickError})` : ""}`,
-              `runner_interval_sec: ${String(runnerIntervalSec)}`,
-              `runner_execution_mode: ${runnerExecutionMode}`,
-              `runner_batch_size: ${String(runnerBatchSize)}`,
-              `runner_max_parallel: ${String(runnerMaxParallel)}`,
-              `logical_threads: ${String(runtimeStats.logicalThreads)}`,
-              `effective_worker_threads: ${String(runtimeStats.effectiveWorkerThreads)}`,
-              `requested_mode: ${requestedMode}`,
-              `resolved_mode: ${resolvedMode}`,
-              `decision_source: ${String(planningDecision.decision_source ?? "(none)")}`,
-              `decision_reason: ${String(planningDecision.decision_reason ?? "(none)")}`,
-              `children_count: ${String(Array.isArray(meta.children) ? meta.children.length : 0)}`,
-              `split_units_planned: ${String(splitUnitsPlanned)}`,
-              `parallel_limit: ${String(runtimeStats.parallelLimit)}`,
-              `queue_depth: ${String(runtimeStats.queueDepth)}`,
-              `policy_mode: ${runtimeStats.policyMode}`,
-              `role_policy_version: ${String(meta.role_constraints_version ?? "unknown")}`,
-              `work_domain_id: ${String(meta.work_domain_id ?? "(none)")}`,
-              `workspace_root: ${String(meta.workspace_root ?? runtimeStats.workdomainRoot)}`,
-              `workspace_config_source: ${String(meta.workspace_config_source ?? "runtime_default")}`,
-              `workspace_validated: ${String((meta.workspace_validated as boolean | undefined) === false ? "false" : "true")}`,
-              `planning_actor: ${String(executionRoles.planning_actor ?? "planner-core")}`,
-              `scheduling_actor: ${String(executionRoles.scheduling_actor ?? "scheduler-ops")}`,
-              `actor_compat_mode: ${String((executionRoles.compat_mode as boolean | undefined) ? "true" : "false")}`,
-              `actor_compat_hits: ${String(executionRoles.compat_hits ?? 0)}`,
-              `aggregate_publish_status: ${String(aggregate.publish_status ?? "none")}`,
-              `aggregate_manifest: ${String(aggregate.manifest_path ?? "(none)")}`,
-              `aggregate_audit_status: ${String((meta as Record<string, unknown>).aggregate_audit_status ?? (aggregate.publish_status === "audited_pass" || aggregate.publish_status === "published" ? "PASS" : aggregate.publish_status === "audited_fail" || aggregate.publish_status === "rolled_back" ? "FAIL" : "(none)"))}`,
-              `aggregate_collisions_count: ${String((meta as Record<string, unknown>).aggregate_collisions_count ?? 0)}`,
-              `aggregate_last_block_reason: ${String(aggregate.last_block_reason ?? "(none)")}`,
-              `run_root: ${String(meta.run_root ?? "(none)")}`,
-              `project_id: ${String(meta.project_id ?? "prj_default")}`,
-              `orchestrate_session_key: ${String(meta.orchestrate_session_key ?? "(none)")}`,
-              `summary_id: ${String(meta.summary_id ?? "(none)")}`,
-              `summary_path: ${String(meta.summary_path ?? "(none)")}`,
-              `input_source: ${String(meta.input_source ?? "(none)")}`,
-              `acl_denied_count: ${String(acl.denied_count ?? runtimeStats.aclDeniedCount)}`,
-              `acl_last_denied_at: ${String((acl.last_denied_at ?? runtimeStats.aclLastDeniedAt) || "(none)")}`,
-              `sandbox_status: ${runtimeStats.sandboxEnabled ? "enabled" : "disabled"}`,
-              `commit_guard_status: ${runtimeStats.commitGuardEnabled ? "enabled" : "disabled"}`,
-              `kb_import_confirm_required: ${runtimeStats.kbImportConfirmRequired ? "true" : "false"}`,
-              `kb_import_auto_enabled: ${runtimeStats.kbImportAutoEnabled ? "true" : "false"}`,
-              `workspace_sync_sensitivity: ${runtimeStats.workspaceSyncSensitivity}`,
-              `skill_mcp_isolation_enabled: ${runtimeStats.skillMcpIsolationEnabled ? "true" : "false"}`,
-              `protect_orchestrator_config: ${runtimeStats.protectOrchestratorConfig ? "true" : "false"}`,
-              `project_runtime_profile: ${runtimeStats.projectRuntimeProfile}`,
-              `orchestrator_runtime_profile: ${runtimeStats.orchestratorRuntimeProfile}`,
-              `workspace_user_change_seq: ${String(meta.workspace_user_change_seq ?? 0)}`,
-              `workspace_last_synced_seq: ${String(meta.workspace_last_synced_seq ?? 0)}`,
-              `runner_lock_mtime: ${lockMtime || "(none)"}`,
-              `runtime_consistency: ${consistencyInfo?.runtimeConsistency || runtimeConsistency}`,
-              `runtime_signature: ${runtimeSignature || "(none)"}`,
-              `runtime_expected_signature: ${runtimeSignatureExpected || "(none)"}`,
-              `external_runner_running: ${externalRunner.running ? "true" : "false"}`,
-              `external_runner_pid: ${externalRunner.pid > 0 ? String(externalRunner.pid) : "(none)"}`,
-              `external_runner_last_tick_at: ${externalRunner.lastTickAt || "(none)"}`,
-              `external_runner_last_exit_code: ${externalRunner.lastExitCode || "(none)"}`,
-              runnerStatus === "degraded" && cfg.runnerFallbackEnabled
-                ? "runner_fallback_hint: bash agent-orchestrator/scripts/orchestrate_runner_daemon.sh start 10"
-                : "runner_fallback_hint: (none)",
-              `amendments: ${String(amendmentCount)}`,
-              amendmentCount > 0 ? `last_amendment: ${lastAmendment}` : "last_amendment: (none)",
-              recent.length > 0 ? "recent_events:" : "recent_events: (none)",
-              ...recent.map((line) => `- ${line}`),
-            ].join("\n"),
+            text: renderTaskStatusResponse({
+              taskId,
+              meta,
+              runnerStatus,
+              runnerLastTickAt,
+              runnerLastTickResult,
+              runnerLastTickError,
+              runnerIntervalSec,
+              runnerExecutionMode,
+              runnerBatchSize,
+              runnerMaxParallel,
+              runtimeStats,
+              requestedMode,
+              resolvedMode,
+              planningDecision,
+              splitUnitsPlanned,
+              acl,
+              aggregate,
+              executionRoles,
+              lockMtime,
+              runtimeConsistency: consistencyInfo?.runtimeConsistency || runtimeConsistency,
+              runtimeSignature,
+              runtimeExpectedSignature: runtimeSignatureExpected,
+              externalRunner,
+              runnerFallbackEnabled: cfg.runnerFallbackEnabled,
+              amendmentCount,
+              lastAmendment,
+              recent,
+            }),
           };
         }
 
@@ -2963,80 +2842,48 @@ const orchestratorDashboardPlugin = {
             }
 
             return {
-              text: [
-                `task_id: ${taskId}`,
-                `orchestrate_session_key: ${sessionKeyForRun}`,
-                `summary_id: ${latestSummary.summary_id}`,
-                `summary_path: ${summaryPath}`,
-                `state: ${payload.state}`,
-                `version: ${String(payload.version)}`,
-                `worker: ${singleWorkerId}`,
-                `strategy: ${strategyPath}`,
-                `dashboard: ${basePath}`,
-                `scheduler_status: ${runnerInfo.schedulerStatus}`,
-                `last_tick_at: ${runnerInfo.lastTickAt || "(pending)"}`,
-                `last_tick_result: ${runnerLastTickResult}${runnerLastTickError ? ` (${runnerLastTickError})` : ""}`,
-                `runner_interval_sec: ${String(runnerInfo.intervalSec)}`,
-                `runner_execution_mode: ${runnerExecutionMode}`,
-                `runner_batch_size: ${String(runnerBatchSize)}`,
-                `runner_max_parallel: ${String(runnerMaxParallel)}`,
-                `logical_threads: ${String(runtimeStats.logicalThreads)}`,
-                `effective_worker_threads: ${String(runtimeStats.effectiveWorkerThreads)}`,
-                `requested_mode: ${requestedModeResolved}`,
-                `resolved_mode: ${resolvedMode}`,
-                `decision_source: ${String(planningDecision.decision_source ?? "manual_override")}`,
-                `decision_reason: ${String(planningDecision.decision_reason ?? "(none)")}`,
-                `split_units_planned: ${String(splitUnitsPlanned)}`,
-                `parallel_limit: ${String(runtimeStats.parallelLimit)}`,
-                `queue_depth: ${String(runtimeStats.queueDepth)}`,
-                `policy_mode: ${runtimeStats.policyMode}`,
-                `role_policy_version: ${String(meta.role_constraints_version ?? "unknown")}`,
-                `work_domain_id: ${String(meta.work_domain_id ?? "(none)")}`,
-                `workspace_root: ${String(meta.workspace_root ?? runtimeStats.workdomainRoot)}`,
-                `workspace_config_source: ${String(meta.workspace_config_source ?? workspaceResolved.source)}`,
-                `workspace_validated: ${String(((meta.workspace_validated as boolean | undefined) ?? workspaceResolved.validated) ? "true" : "false")}`,
-                `planning_actor: ${String(payload.planning_actor)}`,
-                `scheduling_actor: ${String(payload.scheduling_actor)}`,
-                `actor_compat_mode: ${String(payload.actor_compat_mode ? "true" : "false")}`,
-                `actor_compat_hits: ${String(payload.actor_compat_hits)}`,
-                `aggregate_publish_status: ${String(aggregate.publish_status ?? "none")}`,
-                `aggregate_manifest: ${String(aggregate.manifest_path ?? "(none)")}`,
-                `aggregate_audit_status: ${String(payload.aggregate_audit_status || "(none)")}`,
-                `aggregate_collisions_count: ${String(payload.aggregate_collisions_count)}`,
-                `aggregate_last_block_reason: ${String(aggregate.last_block_reason ?? "(none)")}`,
-                `run_root: ${String(meta.run_root ?? "(none)")}`,
-                `project_id: ${String(meta.project_id ?? "prj_default")}`,
-                `runtime_consistency: ${consistencyInfo?.runtimeConsistency || runtimeConsistency}`,
-                `runtime_signature: ${runtimeSignature || "(none)"}`,
-                `runtime_expected_signature: ${runtimeSignatureExpected || "(none)"}`,
-                `external_runner_running: ${externalRunner.running ? "true" : "false"}`,
-                `external_runner_pid: ${externalRunner.pid > 0 ? String(externalRunner.pid) : "(none)"}`,
-                `external_runner_last_tick_at: ${externalRunner.lastTickAt || "(none)"}`,
-                `external_runner_last_exit_code: ${externalRunner.lastExitCode || "(none)"}`,
-                runnerInfo.schedulerStatus === "degraded" && cfg.runnerFallbackEnabled
-                  ? "runner_fallback_hint: bash agent-orchestrator/scripts/orchestrate_runner_daemon.sh start 10"
-                  : "runner_fallback_hint: (none)",
-                `acl_denied_count: ${String((meta.acl as Record<string, unknown> | undefined)?.denied_count ?? runtimeStats.aclDeniedCount)}`,
-                `acl_last_denied_at: ${String(((meta.acl as Record<string, unknown> | undefined)?.last_denied_at ?? runtimeStats.aclLastDeniedAt) || "(none)")}`,
-                `sandbox_status: ${runtimeStats.sandboxEnabled ? "enabled" : "disabled"}`,
-                `commit_guard_status: ${runtimeStats.commitGuardEnabled ? "enabled" : "disabled"}`,
-                `kb_import_confirm_required: ${runtimeStats.kbImportConfirmRequired ? "true" : "false"}`,
-                `kb_import_auto_enabled: ${runtimeStats.kbImportAutoEnabled ? "true" : "false"}`,
-                `workspace_sync_sensitivity: ${runtimeStats.workspaceSyncSensitivity}`,
-                `skill_mcp_isolation_enabled: ${runtimeStats.skillMcpIsolationEnabled ? "true" : "false"}`,
-                `protect_orchestrator_config: ${runtimeStats.protectOrchestratorConfig ? "true" : "false"}`,
-                `project_runtime_profile: ${runtimeStats.projectRuntimeProfile}`,
-                `orchestrator_runtime_profile: ${runtimeStats.orchestratorRuntimeProfile}`,
-                `workspace_user_change_seq: ${String(meta.workspace_user_change_seq ?? 0)}`,
-                `workspace_last_synced_seq: ${String(meta.workspace_last_synced_seq ?? 0)}`,
-                `llm_planner: ${llmPlan.used ? "enabled" : `fallback(${llmPlan.reason})`}`,
-                `llm_auth_mode: ${llmPlan.authMode}`,
-                `llm_key_source: ${llmPlan.keySource || "(none)"}`,
-                "",
-                renderRequiredConfigChecklist(),
-                "",
-                ...scriptTrace,
-              ].join("\n"),
+              text: renderRunSuccessResponse({
+                taskId,
+                sessionKeyForRun,
+                summaryId: latestSummary.summary_id,
+                summaryPath,
+                payload,
+                singleWorkerId,
+                strategyPath,
+                basePath,
+                runnerStatus: runnerInfo.schedulerStatus,
+                runnerLastTickAt: runnerInfo.lastTickAt,
+                runnerLastTickResult,
+                runnerLastTickError,
+                runnerIntervalSec: runnerInfo.intervalSec,
+                runnerExecutionMode,
+                runnerBatchSize,
+                runnerMaxParallel,
+                runtimeStats,
+                requestedMode: requestedModeResolved,
+                resolvedMode,
+                planningDecision,
+                splitUnitsPlanned,
+                meta,
+                workspaceConfigSource: String(
+                  meta.workspace_config_source ?? workspaceResolved.source,
+                ),
+                workspaceValidated: Boolean(
+                  (meta.workspace_validated as boolean | undefined) ?? workspaceResolved.validated,
+                ),
+                aggregate,
+                runtimeConsistency: consistencyInfo?.runtimeConsistency || runtimeConsistency,
+                runtimeSignature,
+                runtimeExpectedSignature: runtimeSignatureExpected,
+                externalRunner,
+                runnerFallbackEnabled: cfg.runnerFallbackEnabled,
+                checklistText: renderRequiredConfigChecklist(),
+                scriptTrace,
+                llmUsed: llmPlan.used,
+                llmReason: llmPlan.reason,
+                llmAuthMode: llmPlan.authMode,
+                llmKeySource: llmPlan.keySource,
+              }),
             };
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
