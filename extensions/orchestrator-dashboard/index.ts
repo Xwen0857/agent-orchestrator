@@ -141,8 +141,8 @@ const orchestratorDashboardPlugin = {
       return handleBeforeAgentStartHook({
         event,
         ctx,
-        readOrchestrateSession: bootstrapAssembly.state.readOrchestrateSession,
-        writeOrchestrateSession: bootstrapAssembly.state.writeOrchestrateSession,
+        readOrchestrateSession: pluginRuntime.hookDeps.readOrchestrateSession,
+        writeOrchestrateSession: pluginRuntime.hookDeps.writeOrchestrateSession,
       });
     });
 

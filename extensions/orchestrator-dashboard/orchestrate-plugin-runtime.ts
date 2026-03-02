@@ -171,6 +171,10 @@ export function buildOrchestratePluginRuntime(
   commandDeps: CommandDeps;
   httpDeps: HttpDeps;
   overviewDeps: OverviewDeps;
+  hookDeps: {
+    readOrchestrateSession: BuildOrchestratePluginRuntimeParams["state"]["readOrchestrateSession"];
+    writeOrchestrateSession: BuildOrchestratePluginRuntimeParams["state"]["writeOrchestrateSession"];
+  };
 } {
   // Keep IO adapters shared so every entrypoint reads and writes the same files
   // through the same atomic helpers and defaulting behavior.
@@ -244,6 +248,10 @@ export function buildOrchestratePluginRuntime(
       trimOutput: uiRenderHelpers.trimOutput,
       renderRequiredConfigChecklist: uiRenderHelpers.renderRequiredConfigChecklist,
       renderOrchestrateHelp: uiRenderHelpers.renderOrchestrateHelp,
+    },
+    hookDeps: {
+      readOrchestrateSession: stateAccess.readOrchestrateSession,
+      writeOrchestrateSession: stateAccess.writeOrchestrateSession,
     },
     httpDeps: {
       api: params.api,

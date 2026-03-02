@@ -42,6 +42,26 @@ function createConsistency(overrides?: Partial<{
 }
 
 describe("orchestrate command router", () => {
+  it("lets help act as a side-effect-free recovery path", async () => {
+    const handlers = createCommandHandlers();
+    const result = await handleOrchestrateCommand({
+      ctx: { args: "help" },
+      commandHandlers: handlers,
+      consistency: createConsistency({
+        startupError: "startup mismatch",
+        assertRuntimeConsistency: vi.fn(async () => {
+          throw new Error("runtime mismatch");
+        }),
+      }),
+      renderOrchestrateHelp: () => "help text",
+    });
+
+    expect(result.text).toContain("startup mismatch");
+    expect(result.text).toContain("help text");
+    expect(handlers.handleRun).not.toHaveBeenCalled();
+    expect(handlers.handleSession).not.toHaveBeenCalled();
+  });
+
   it("returns startup consistency error before dispatch", async () => {
     const handlers = createCommandHandlers();
     const result = await handleOrchestrateCommand({
@@ -83,5 +103,18 @@ describe("orchestrate command router", () => {
 
     expect(result).toEqual({ text: "run ok" });
     expect(handlers.handleRun).toHaveBeenCalledWith("", expect.objectContaining({ sessionKey: "sess_demo" }));
+  });
+
+  it("dispatches session-scoped commands through the shared session handler", async () => {
+    const handlers = createCommandHandlers();
+    const result = await handleOrchestrateCommand({
+      ctx: { args: "summary", sessionKey: "sess_demo" },
+      commandHandlers: handlers,
+      consistency: createConsistency(),
+      renderOrchestrateHelp: () => "help",
+    });
+
+    expect(result).toEqual({ text: "session ok" });
+    expect(handlers.handleSession).toHaveBeenCalledWith("summary", expect.objectContaining({ sessionKey: "sess_demo" }));
   });
 });

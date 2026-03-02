@@ -20,6 +20,11 @@ type HandleOrchestrateCommandParams = {
   renderOrchestrateHelp: () => string;
 };
 
+type RoutedSubcommand = Exclude<
+  ReturnType<typeof parseOrchestrateArgs>["subcommand"],
+  "help"
+>;
+
 /**
  * Centralizes command parsing, runtime-consistency gating, and subcommand routing so the
  * plugin entry only has to register one handler with the host runtime.
@@ -30,13 +35,20 @@ export async function handleOrchestrateCommand({
   consistency,
   renderOrchestrateHelp,
 }: HandleOrchestrateCommandParams): Promise<{ text: string }> {
+  const parsed = parseOrchestrateArgs(ctx.args);
+  if (parsed.subcommand === "help") {
+    const startupError = consistency.getStartupError();
+    return {
+      text: startupError ? `${startupError}\n\n${renderOrchestrateHelp()}` : renderOrchestrateHelp(),
+    };
+  }
+
   await consistency.startupConsistencyPromise;
   const startupError = consistency.getStartupError();
   if (startupError) {
     return { text: startupError };
   }
 
-  const parsed = parseOrchestrateArgs(ctx.args);
   try {
     await consistency.assertRuntimeConsistency("command");
   } catch (err) {
@@ -44,56 +56,41 @@ export async function handleOrchestrateCommand({
     return { text: message };
   }
 
-  if (parsed.subcommand === "help") {
-    return { text: renderOrchestrateHelp() };
-  }
-
-  if (
-    parsed.subcommand === "start" ||
-    parsed.subcommand === "session" ||
-    parsed.subcommand === "stop" ||
-    parsed.subcommand === "summary"
-  ) {
-    return {
-      text: await commandHandlers.handleSession(parsed.subcommand, ctx),
-    };
-  }
-
-  if (parsed.subcommand === "path") {
-    return {
+  const dispatch: Record<
+    RoutedSubcommand,
+    () => Promise<{ text: string }>
+  > = {
+    start: async () => ({
+      text: await commandHandlers.handleSession("start", ctx),
+    }),
+    session: async () => ({
+      text: await commandHandlers.handleSession("session", ctx),
+    }),
+    stop: async () => ({
+      text: await commandHandlers.handleSession("stop", ctx),
+    }),
+    summary: async () => ({
+      text: await commandHandlers.handleSession("summary", ctx),
+    }),
+    path: async () => ({
       text: await commandHandlers.handlePath(parsed.payload, ctx.senderId),
-    };
-  }
-
-  if (parsed.subcommand === "status") {
-    return {
+    }),
+    status: async () => ({
       text: await commandHandlers.handleStatus(parsed.payload),
-    };
-  }
-
-  if (parsed.subcommand === "kb-sync") {
-    return {
+    }),
+    "kb-sync": async () => ({
       text: await commandHandlers.handleKbSync(parsed.payload),
-    };
-  }
-
-  if (parsed.subcommand === "intake") {
-    return {
+    }),
+    intake: async () => ({
       text: await commandHandlers.handleIntake(parsed.payload, ctx),
-    };
-  }
-
-  if (parsed.subcommand === "amend") {
-    return {
+    }),
+    amend: async () => ({
       text: await commandHandlers.handleAmend(parsed.payload),
-    };
-  }
-
-  if (parsed.subcommand === "run") {
-    return {
+    }),
+    run: async () => ({
       text: await commandHandlers.handleRun(parsed.payload, ctx),
-    };
-  }
+    }),
+  };
 
-  return { text: renderOrchestrateHelp() };
+  return dispatch[parsed.subcommand]();
 }

@@ -274,6 +274,8 @@ describe("orchestrate plugin runtime composer", () => {
     expect(runtime.commandDeps.runtime.getRunnerSnapshot().runnerStatus).toBe("started");
     expect(runtime.commandDeps.runtime.getConsistencySnapshot().runtimeConsistency).toBe("ok");
     expect(runtime.commandDeps.runtime.ensureRunnerStarted).toBe(runnerController.ensureRunnerStarted);
+    expect(runtime.hookDeps.readOrchestrateSession).toBe(runtime.commandDeps.readOrchestrateSession);
+    expect(runtime.hookDeps.writeOrchestrateSession).toBe(runtime.commandDeps.writeOrchestrateSession);
 
     expect(runtime.httpDeps.api).toBe(api);
     expect(runtime.httpDeps.cfg.requireGatewayAuth).toBe(true);
