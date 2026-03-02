@@ -1,9 +1,17 @@
+/**
+ * Adapts the assembled plugin runtime into the dependency shapes expected by the
+ * command layer, HTTP routes, and overview gateway.
+ * This keeps entrypoint wiring explicit while avoiding duplicated mapping code.
+ */
 import type { createOrchestrateCommandHandlers } from "./orchestrate-command-deps.js";
+import type { OrchestratorBootstrapAssembly } from "./orchestrate-bootstrap-assembly.js";
+import type { OrchestratorBootstrapContext } from "./orchestrate-bootstrap-context.js";
 import type { registerOrchestratorHttpRoutes } from "./orchestrate-http.js";
 import type { registerOrchestratorOverviewGatewayMethod } from "./orchestrate-overview-gateway.js";
 import type { PathState } from "./orchestrate-path.js";
 import type { AgentRuntimeController } from "./orchestrate-agent-runtime.js";
 import type { ExecutionRuntimeReader } from "./orchestrate-execution-runtime.js";
+import type { OrchestrateIo } from "./orchestrate-io.js";
 import type { OrchestrateStatePaths } from "./orchestrate-state.js";
 import type {
   RuntimeConsistencyController,
@@ -26,6 +34,10 @@ type ConfigServiceLike = {
   releaseLock: HttpDeps["helpers"]["releaseLock"];
 };
 
+/**
+ * Complete dependency graph needed to derive all public plugin surfaces from one
+ * shared runtime assembly step.
+ */
 export type BuildOrchestratePluginRuntimeParams = {
   api: OverviewDeps["api"];
   repoRoot: string;
@@ -71,6 +83,88 @@ export type BuildOrchestratePluginRuntimeParams = {
   };
 };
 
+/**
+ * Compresses bootstrap context, assembled runtime controllers, and host-level helpers into
+ * the narrower input shape consumed by the plugin runtime composer. This keeps the plugin
+ * entry from hand-mapping nested path/controller structures on every startup.
+ */
+export function buildOrchestratePluginRuntimeInput(params: {
+  api: BuildOrchestratePluginRuntimeParams["api"];
+  repoRoot: string;
+  basePath: string;
+  apiBasePath: string;
+  cfg: {
+    runnerEnabled: boolean;
+    runnerFallbackEnabled: boolean;
+    requireGatewayAuth: boolean;
+  };
+  bootstrap: OrchestratorBootstrapContext;
+  assembly: OrchestratorBootstrapAssembly;
+  io: OrchestrateIo;
+  helpers: BuildOrchestratePluginRuntimeParams["helpers"];
+}): BuildOrchestratePluginRuntimeParams {
+  const { api, repoRoot, basePath, apiBasePath, cfg, bootstrap, assembly, io, helpers } = params;
+  return {
+    api,
+    repoRoot,
+    basePath,
+    apiBasePath,
+    cfg,
+    paths: {
+      statePaths: {
+        pathState: bootstrap.paths.pathState,
+        orchestrateSessionsDir: bootstrap.paths.orchestrateSessionsDir,
+        orchestrateRequestsDir: bootstrap.paths.orchestrateRequestsDir,
+      },
+      command: {
+        orchestrateRequestsDir: bootstrap.paths.orchestrateRequestsDir,
+        taskFoldersRoot: bootstrap.paths.taskFoldersRoot,
+        dashboardJson: bootstrap.paths.dashboardJson,
+        systemHealthJson: bootstrap.paths.systemHealthJson,
+        executionRuntime: bootstrap.paths.executionRuntime,
+      },
+      httpRoutePaths: {
+        ...bootstrap.paths,
+      },
+      httpNames: {
+        dashboardJson: bootstrap.paths.dashboardJson,
+        systemHealthJson: bootstrap.paths.systemHealthJson,
+        plannerCurrent: bootstrap.paths.plannerCurrent,
+        plannerProperties: bootstrap.paths.plannerProperties,
+        auditPolicy: bootstrap.paths.auditPolicy,
+        auditHistory: bootstrap.paths.history,
+        snapshotScript: bootstrap.paths.snapshotScript,
+        rollbackScript: bootstrap.paths.rollbackScript,
+      },
+      eventsPath: bootstrap.eventsPath,
+      overview: {
+        dashboardJson: bootstrap.paths.dashboardJson,
+        systemHealthJson: bootstrap.paths.systemHealthJson,
+      },
+    },
+    state: {
+      ...assembly.state,
+    },
+    io: {
+      fileExists: io.fileExists,
+      readJsonOrDefault: io.readJsonOrDefault,
+      writeJsonAtomic: io.writeJsonAtomic,
+      readNdjson: io.readNdjson,
+      readText: io.readText,
+      writeTextAtomic: io.writeTextAtomic,
+    },
+    controllers: {
+      ...assembly.controllers,
+    },
+    configService: assembly.services.configService,
+    helpers,
+  };
+}
+
+/**
+ * Splits one shared runtime assembly into the narrower dependency bags consumed by
+ * command registration, HTTP route registration, and the overview gateway.
+ */
 export function buildOrchestratePluginRuntime(
   params: BuildOrchestratePluginRuntimeParams,
 ): {
@@ -78,6 +172,8 @@ export function buildOrchestratePluginRuntime(
   httpDeps: HttpDeps;
   overviewDeps: OverviewDeps;
 } {
+  // Keep IO adapters shared so every entrypoint reads and writes the same files
+  // through the same atomic helpers and defaulting behavior.
   const sharedReadJsonOrDefault = params.io.readJsonOrDefault;
   const sharedIo = {
     fileExists: params.io.fileExists,
@@ -95,6 +191,8 @@ export function buildOrchestratePluginRuntime(
     writePathState: params.state.writePathState,
   };
 
+  // Runtime readers expose only read/status methods instead of the full controller
+  // objects, which keeps downstream dependencies narrow and easier to test.
   const runtimeReaders = {
     getRunnerLockMtime: params.controllers.runner.getRunnerLockMtime,
     loadExecutionRuntime: params.controllers.execution.loadExecutionRuntime,

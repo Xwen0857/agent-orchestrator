@@ -13,7 +13,10 @@ import { createOrchestrateCommandHandlers } from "./orchestrate-command-deps.js"
 import { handleOrchestrateCommand } from "./orchestrate-command-router.js";
 import { handleBeforeAgentStartHook } from "./orchestrate-session-agent-hook.js";
 import { registerOrchestratorOverviewGatewayMethod } from "./orchestrate-overview-gateway.js";
-import { buildOrchestratePluginRuntime } from "./orchestrate-plugin-runtime.js";
+import {
+  buildOrchestratePluginRuntime,
+  buildOrchestratePluginRuntimeInput,
+} from "./orchestrate-plugin-runtime.js";
 import { createOrchestratorEventEmitter } from "./orchestrate-events.js";
 import {
   createDefaultOrchestrateIo,
@@ -107,7 +110,7 @@ const orchestratorDashboardPlugin = {
     });
     bootstrapAssembly.controllers.runner.kickoffOnStartup();
 
-    const pluginRuntime = buildOrchestratePluginRuntime({
+    const pluginRuntime = buildOrchestratePluginRuntime(buildOrchestratePluginRuntimeInput({
       api,
       repoRoot,
       basePath,
@@ -117,53 +120,9 @@ const orchestratorDashboardPlugin = {
         runnerFallbackEnabled: cfg.runnerFallbackEnabled,
         requireGatewayAuth: cfg.requireGatewayAuth,
       },
-      paths: {
-        statePaths: {
-          pathState: paths.pathState,
-          orchestrateSessionsDir: paths.orchestrateSessionsDir,
-          orchestrateRequestsDir: paths.orchestrateRequestsDir,
-        },
-        command: {
-          orchestrateRequestsDir: paths.orchestrateRequestsDir,
-          taskFoldersRoot: paths.taskFoldersRoot,
-          dashboardJson: paths.dashboardJson,
-          systemHealthJson: paths.systemHealthJson,
-          executionRuntime: paths.executionRuntime,
-        },
-        httpRoutePaths: {
-          ...paths,
-        },
-        httpNames: {
-          dashboardJson: paths.dashboardJson,
-          systemHealthJson: paths.systemHealthJson,
-          plannerCurrent: paths.plannerCurrent,
-          plannerProperties: paths.plannerProperties,
-          auditPolicy: paths.auditPolicy,
-          auditHistory: paths.history,
-          snapshotScript: paths.snapshotScript,
-          rollbackScript: paths.rollbackScript,
-        },
-        eventsPath,
-        overview: {
-          dashboardJson: paths.dashboardJson,
-          systemHealthJson: paths.systemHealthJson,
-        },
-      },
-      state: {
-        ...bootstrapAssembly.state,
-      },
-      io: {
-        fileExists: io.fileExists,
-        readJsonOrDefault: io.readJsonOrDefault,
-        writeJsonAtomic: io.writeJsonAtomic,
-        readNdjson: io.readNdjson,
-        readText: io.readText,
-        writeTextAtomic: io.writeTextAtomic,
-      },
-      controllers: {
-        ...bootstrapAssembly.controllers,
-      },
-      configService: bootstrapAssembly.services.configService,
+      bootstrap,
+      assembly: bootstrapAssembly,
+      io,
       helpers: {
         emitEvent,
         runWhitelistedScript,
@@ -175,7 +134,7 @@ const orchestratorDashboardPlugin = {
         updatePlainKvText,
         updateListKvText,
       },
-    });
+    }));
     const commandHandlers = createOrchestrateCommandHandlers(pluginRuntime.commandDeps);
 
     api.on("before_agent_start", async (event, ctx) => {

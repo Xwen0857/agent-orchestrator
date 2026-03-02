@@ -1,7 +1,118 @@
-import { buildOrchestratePluginRuntime } from "../orchestrate-plugin-runtime.js";
+import {
+  buildOrchestratePluginRuntime,
+  buildOrchestratePluginRuntimeInput,
+} from "../orchestrate-plugin-runtime.js";
 import { describe, expect, it, vi } from "vitest";
 
 describe("orchestrate plugin runtime composer", () => {
+  it("builds normalized composer input from bootstrap state", () => {
+    const input = buildOrchestratePluginRuntimeInput({
+      api: {
+        registerHttpRoute: vi.fn(),
+        registerHttpHandler: vi.fn(),
+        registerGatewayMethod: vi.fn(),
+      } as never,
+      repoRoot: "/repo",
+      basePath: "/plugins/orchestrator",
+      apiBasePath: "/api/plugins/orchestrator",
+      cfg: {
+        runnerEnabled: true,
+        runnerFallbackEnabled: false,
+        requireGatewayAuth: true,
+      },
+      bootstrap: {
+        dataDir: "/repo/.state",
+        eventsPath: "/repo/events.ndjson",
+        lockPath: "/repo/.lock",
+        paths: {
+          dashboardJson: "/repo/dashboard.json",
+          systemHealthJson: "/repo/system_health.json",
+          orchestrateRequestsDir: "/repo/requests",
+          orchestrateSessionsDir: "/repo/sessions",
+          pathState: "/repo/path_state.json",
+          taskFoldersRoot: "/repo/tasks",
+          plannerCurrent: "/repo/current",
+          plannerProperties: "/repo/properties",
+          auditPolicy: "/repo/audit.json",
+          history: "/repo/history.ndjson",
+          snapshotScript: "/repo/snapshot.sh",
+          rollbackScript: "/repo/rollback.sh",
+          agentRuntimeConfig: "/repo/agent_runtime.json",
+          executionRuntime: "/repo/runtime.json",
+        },
+        runnerLockPath: "/repo/runner.lock",
+        runtimeSignaturePath: "/repo/runtime.signature.json",
+        runtimeSignatureFiles: [],
+        externalRunnerScriptPath: "/repo/runner.sh",
+      },
+      assembly: {
+        state: {
+          readOrchestrateSession: vi.fn(),
+          writeOrchestrateSession: vi.fn(),
+          readPathState: vi.fn(),
+          writePathState: vi.fn(),
+        },
+        services: {
+          configService: {
+            loadCurrentConfig: vi.fn(),
+            validateDraft: vi.fn(),
+            acquireLock: vi.fn(),
+            releaseLock: vi.fn(),
+          },
+        },
+        controllers: {
+          consistency: {
+            assertRuntimeConsistency: vi.fn(),
+            getSnapshot: vi.fn(),
+            getStartupError: vi.fn(),
+            startupConsistencyPromise: Promise.resolve(null),
+          },
+          execution: {
+            loadExecutionRuntime: vi.fn(),
+          },
+          agent: {
+            loadAgentRuntimeConfig: vi.fn(),
+            enhanceStrategyWithLlm: vi.fn(),
+          },
+          runner: {
+            ensureRunnerStarted: vi.fn(),
+            getExternalRunnerStatus: vi.fn(),
+            getRunnerLockMtime: vi.fn(),
+            getSnapshot: vi.fn(),
+            kickoffOnStartup: vi.fn(),
+          },
+        },
+      },
+      io: {
+        fileExists: vi.fn(),
+        readJsonOrDefault: vi.fn(),
+        writeJsonAtomic: vi.fn(),
+        readNdjson: vi.fn(),
+        readText: vi.fn(),
+        writeTextAtomic: vi.fn(),
+        appendNdjson: vi.fn(),
+        runScript: vi.fn(),
+      },
+      helpers: {
+        emitEvent: vi.fn(),
+        runWhitelistedScript: vi.fn(),
+        runScript: vi.fn(),
+        buildWorkerIdFromTaskId: vi.fn(),
+        trimOutput: vi.fn(),
+        renderRequiredConfigChecklist: vi.fn(),
+        renderOrchestrateHelp: vi.fn(),
+        updatePlainKvText: vi.fn(),
+        updateListKvText: vi.fn(),
+      },
+    });
+
+    expect(input.paths.command.taskFoldersRoot).toBe("/repo/tasks");
+    expect(input.paths.statePaths.orchestrateSessionsDir).toBe("/repo/sessions");
+    expect(input.paths.httpNames.auditHistory).toBe("/repo/history.ndjson");
+    expect(input.paths.eventsPath).toBe("/repo/events.ndjson");
+    expect(input.configService).toBeDefined();
+  });
+
   it("builds normalized command, http, and overview dependency bundles", async () => {
     const api = {
       registerHttpRoute: vi.fn(),
