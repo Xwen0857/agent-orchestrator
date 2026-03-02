@@ -1,6 +1,4 @@
-import type { IncomingMessage } from "node:http";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runWhitelistedScript } from "./orchestrate-command.js";
@@ -11,11 +9,9 @@ import { createOrchestrateCommandHandlers } from "./orchestrate-command-deps.js"
 import { handleBeforeAgentStartHook } from "./orchestrate-session-agent-hook.js";
 import { registerOrchestratorOverviewGatewayMethod } from "./orchestrate-overview-gateway.js";
 import { buildOrchestratePluginRuntime } from "./orchestrate-plugin-runtime.js";
+import { createOrchestratorEventEmitter } from "./orchestrate-events.js";
 import {
   createDefaultOrchestrateIo,
-  resolveExistingPath,
-  resolvePath,
-  resolvePluginStateDir,
   trimOutput,
 } from "./orchestrate-io.js";
 import {
@@ -26,7 +22,6 @@ import {
 } from "./orchestrate-state.js";
 import {
   buildRuntimeConsistencyController,
-  type RuntimeSignatureFileSpec,
 } from "./orchestrate-runtime-consistency.js";
 import {
   createConfigService,
@@ -36,6 +31,7 @@ import {
 import { buildExecutionRuntimeReader } from "./orchestrate-execution-runtime.js";
 import { buildAgentRuntimeController } from "./orchestrate-agent-runtime.js";
 import { buildRunnerRuntimeController } from "./orchestrate-runner-runtime.js";
+import { buildOrchestratorBootstrapContext } from "./orchestrate-bootstrap-context.js";
 
 type DashboardPluginConfig = {
   enabled: boolean;
@@ -301,99 +297,30 @@ const orchestratorDashboardPlugin = {
     const repoRoot = cfg.repoRoot;
     const pluginDir = path.dirname(fileURLToPath(import.meta.url));
     const io = createDefaultOrchestrateIo();
-
-    const dataDir = path.join(resolvePluginStateDir(api), "plugins", "orchestrator-dashboard");
-    const eventsPath = path.join(dataDir, "events.ndjson");
-    const lockPath = path.join(dataDir, ".commit.lock");
-
-    const paths = {
-      dashboardJson: resolvePath(repoRoot, cfg.dashboardJsonPath),
-      systemHealthJson: resolvePath(repoRoot, cfg.systemHealthJsonPath),
-      orchestrateRequestsDir: resolvePath(repoRoot, DEFAULT_REQUESTS_PATH),
-      orchestrateSessionsDir: resolvePath(repoRoot, "templates/coordination/orchestrator/sessions"),
-      pathState: resolvePath(
-        repoRoot,
-        "templates/coordination/orchestrator/requests/path_state.json",
-      ),
-      taskFoldersRoot: resolvePath(repoRoot, DEFAULT_TASKS_ROOT),
-      plannerCurrent: resolvePath(repoRoot, cfg.plannerCurrentPath),
-      plannerProperties: resolvePath(repoRoot, cfg.plannerPropertiesPath),
-      auditPolicy: resolvePath(repoRoot, cfg.auditPolicyPath),
-      history: resolvePath(repoRoot, cfg.configHistoryPath),
-      snapshotScript: resolvePath(repoRoot, cfg.snapshotScriptPath),
-      rollbackScript: resolvePath(repoRoot, cfg.rollbackScriptPath),
-      agentRuntimeConfig: resolvePath(repoRoot, cfg.agentRuntimeConfigPath),
-      executionRuntime: resolvePath(
-        repoRoot,
-        "templates/coordination/orchestrator/execution_runtime.json",
-      ),
-    };
-    const runnerLockPath = resolvePath(
+    const bootstrap = buildOrchestratorBootstrapContext({
+      api,
       repoRoot,
-      "templates/coordination/orchestrator/.orchestrate-runner.lock",
-    );
-    const runtimeSignaturePath = resolveExistingPath([
-      path.join(pluginDir, "runtime.signature.json"),
-      resolvePath(repoRoot, "extensions/orchestrator-dashboard/runtime.signature.json"),
-    ]);
-    const runtimeSignatureFiles: RuntimeSignatureFileSpec[] = [
-      {
-        id: "extensions/orchestrator-dashboard/index.ts",
-        candidates: [
-          path.join(pluginDir, "index.ts"),
-          path.join(pluginDir, "index.js"),
-          resolvePath(repoRoot, "extensions/orchestrator-dashboard/index.ts"),
-          resolvePath(repoRoot, "extensions/orchestrator-dashboard/index.js"),
-        ],
+      pluginDir,
+      cfg,
+      defaults: {
+        requestsPath: DEFAULT_REQUESTS_PATH,
+        tasksRoot: DEFAULT_TASKS_ROOT,
       },
-      {
-        id: "extensions/orchestrator-dashboard/orchestrate-command.ts",
-        candidates: [
-          path.join(pluginDir, "orchestrate-command.ts"),
-          path.join(pluginDir, "orchestrate-command.js"),
-          resolvePath(
-            repoRoot,
-            "extensions/orchestrator-dashboard/orchestrate-command.ts",
-          ),
-          resolvePath(
-            repoRoot,
-            "extensions/orchestrator-dashboard/orchestrate-command.js",
-          ),
-        ],
-      },
-      {
-        id: "extensions/orchestrator-dashboard/openclaw.plugin.json",
-        candidates: [
-          path.join(pluginDir, "openclaw.plugin.json"),
-          resolvePath(repoRoot, "extensions/orchestrator-dashboard/openclaw.plugin.json"),
-        ],
-      },
-    ];
-    const externalRunnerScriptPath = resolvePath(
-      repoRoot,
-      "agent-orchestrator/scripts/orchestrate_runner_daemon.sh",
-    );
+    });
+    const { eventsPath, lockPath, paths, runnerLockPath, runtimeSignaturePath, runtimeSignatureFiles } =
+      bootstrap;
     const runnerIntervalSec = asPositiveInt(cfg.runnerIntervalSec, DEFAULT_RUNNER_INTERVAL_SEC);
     const runnerTasksRootArg = path.relative(repoRoot, paths.taskFoldersRoot) || ".";
     const runnerExecutionMode = asExecutionMode(cfg.runnerExecutionMode, "local_threads");
     const runnerBatchSize = asPositiveInt(cfg.runnerBatchSize, 4);
     const runnerMaxParallel = asPositiveInt(cfg.runnerMaxParallel, 2);
 
-    const emitEvent = async (
-      eventType: string,
-      payload: Record<string, unknown>,
-      req?: IncomingMessage,
-    ) => {
-      await io.appendNdjson(eventsPath, {
-        event_id: `evt_${randomUUID().replace(/-/g, "")}`,
-        event_type: eventType,
-        occurred_at: new Date().toISOString(),
-        actor: req?.headers["x-openclaw-actor"] || "orchestrator-dashboard",
-        resource: "orchestrator-config",
-        payload,
-        trace_id: `trace_${randomUUID().replace(/-/g, "")}`,
-      });
-    };
+    const emitEvent = createOrchestratorEventEmitter({
+      eventsPath,
+      io: {
+        appendNdjson: io.appendNdjson,
+      },
+    });
 
     const runtimeConsistencyController = buildRuntimeConsistencyController({
       runtimeSignatureFiles,
@@ -430,7 +357,7 @@ const orchestratorDashboardPlugin = {
     const runnerRuntimeController = buildRunnerRuntimeController({
       repoRoot,
       runnerLockPath,
-      externalRunnerScriptPath,
+      externalRunnerScriptPath: bootstrap.externalRunnerScriptPath,
       startupConsistencyPromise: runtimeConsistencyController.startupConsistencyPromise,
       cfg: {
         runnerEnabled: cfg.runnerEnabled,
