@@ -24,8 +24,21 @@ if [[ ! -f "$STRATEGY" ]]; then
   exit 1
 fi
 
-TITLE="$(jq -r '.title // .goal // "untitled"' "$STRATEGY")"
-GOAL="$(jq -r '.goal // ""' "$STRATEGY")"
+TITLE="$(jq -r '.title // .summary_input.task_goal // .goal // "untitled"' "$STRATEGY")"
+TASK_GOAL="$(jq -r '.summary_input.task_goal // .goal // ""' "$STRATEGY")"
+SUMMARY_CONSTRAINTS="$(jq -r '((.summary_input.constraints // []) | map(select(type == "string" and length > 0)) | join("; "))' "$STRATEGY")"
+SUMMARY_DELIVERABLES="$(jq -r '((.summary_input.deliverables // []) | map(select(type == "string" and length > 0)) | join("; "))' "$STRATEGY")"
+SUMMARY_NOTES="$(jq -r '((.summary_input.notes // []) | map(select(type == "string" and length > 0)) | join("; "))' "$STRATEGY")"
+PLANNER_GOAL="$TASK_GOAL"
+if [[ -n "$SUMMARY_CONSTRAINTS" ]]; then
+  PLANNER_GOAL+=$'\n'"Constraints: $SUMMARY_CONSTRAINTS"
+fi
+if [[ -n "$SUMMARY_DELIVERABLES" ]]; then
+  PLANNER_GOAL+=$'\n'"Deliverables: $SUMMARY_DELIVERABLES"
+fi
+if [[ -n "$SUMMARY_NOTES" ]]; then
+  PLANNER_GOAL+=$'\n'"Notes: $SUMMARY_NOTES"
+fi
 RISK="$(jq -r '.risk_level // "MEDIUM"' "$STRATEGY")"
 NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 PRIMARY_ID="primary_${TASK_ID#task_}"
@@ -58,7 +71,7 @@ fi
 
 if ! grep -Fq "$PRIMARY_ID" "$PRIMARY_FILE"; then
   printf '| %s | %s | %s | %s | %s | P1 | STARTED | YES |\n' \
-    "$PRIMARY_ID" "$TITLE" "$GOAL" "risk=$RISK; single-worker" "delivery files + unittest pass" >> "$PRIMARY_FILE"
+    "$PRIMARY_ID" "$TITLE" "$PLANNER_GOAL" "risk=$RISK; single-worker" "delivery files + unittest pass" >> "$PRIMARY_FILE"
 fi
 
 if ! grep -Fq "$CHECKLIST_ID" "$CHECKLIST_FILE"; then
@@ -84,7 +97,7 @@ if ! grep -Fq "$TASK_ID" "$WORKER_LIFECYCLE_FILE"; then
 fi
 
 PLAN_TMP="$(mktemp "$TASK_DIR/.plan.XXXXXX")"
-awk -v goal="$GOAL" -v title="$TITLE" '
+awk -v goal="$PLANNER_GOAL" -v title="$TITLE" '
   {
     if ($0 ~ /^- Scope:[[:space:]]*$/) {
       print "- Scope: " title

@@ -42,6 +42,12 @@ export type OrchestrateStrategy = {
   execution: {
     requested_mode: "auto" | "single" | "multi";
   };
+  summary_input?: {
+    task_goal: string;
+    constraints: string[];
+    deliverables: string[];
+    notes: string[];
+  };
   planning_decision?: {
     requested_mode: "auto" | "single" | "multi";
     resolved_mode: "single" | "multi";
@@ -176,7 +182,6 @@ export function buildStrategyFromSummary(params: {
     source: "run_flag" | "path_default" | "runtime_default";
   };
 }): OrchestrateStrategy {
-  const goalParts = [params.summary.task_goal.trim()];
   const constraints = Array.isArray(params.summary.constraints)
     ? params.summary.constraints.filter((v) => typeof v === "string" && v.trim())
     : [];
@@ -186,19 +191,9 @@ export function buildStrategyFromSummary(params: {
   const notes = Array.isArray(params.summary.notes)
     ? params.summary.notes.filter((v) => typeof v === "string" && v.trim())
     : [];
-
-  if (constraints.length > 0) {
-    goalParts.push(`Constraints: ${constraints.join("; ")}`);
-  }
-  if (deliverables.length > 0) {
-    goalParts.push(`Deliverables: ${deliverables.join("; ")}`);
-  }
-  if (notes.length > 0) {
-    goalParts.push(`Notes: ${notes.join("; ")}`);
-  }
-
-  return normalizeFreeTextToStrategy({
-    input: goalParts.filter(Boolean).join("\n"),
+  const taskGoal = params.summary.task_goal.trim();
+  const strategy = normalizeFreeTextToStrategy({
+    input: taskGoal,
     taskId: params.taskId,
     channel: params.channel,
     senderId: params.senderId,
@@ -217,6 +212,16 @@ export function buildStrategyFromSummary(params: {
     requestedMode: params.summary.requested_mode ?? "auto",
     workspace: params.workspace,
   });
+
+  return {
+    ...strategy,
+    summary_input: {
+      task_goal: taskGoal,
+      constraints,
+      deliverables,
+      notes,
+    },
+  };
 }
 
 function validateScriptArg(arg: string): void {

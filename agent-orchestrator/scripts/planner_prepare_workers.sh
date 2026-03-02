@@ -33,8 +33,21 @@ CHECKLIST_TEMPLATE_FILE="$ROOT/templates/coordination/planner/checklist.example.
 CHECKLIST_FILE="$(resolve_planner_checklist_path)"
 COMPLETED_CONTEXT_FILE="$ROOT/templates/coordination/tasks/completed_context.ndjson"
 
-TITLE="$(jq -r '.title // .goal // "untitled"' "$STRATEGY")"
-GOAL="$(jq -r '.goal // ""' "$STRATEGY")"
+TITLE="$(jq -r '.title // .summary_input.task_goal // .goal // "untitled"' "$STRATEGY")"
+TASK_GOAL="$(jq -r '.summary_input.task_goal // .goal // ""' "$STRATEGY")"
+SUMMARY_CONSTRAINTS="$(jq -r '((.summary_input.constraints // []) | map(select(type == "string" and length > 0)) | join("; "))' "$STRATEGY")"
+SUMMARY_DELIVERABLES="$(jq -r '((.summary_input.deliverables // []) | map(select(type == "string" and length > 0)) | join("; "))' "$STRATEGY")"
+SUMMARY_NOTES="$(jq -r '((.summary_input.notes // []) | map(select(type == "string" and length > 0)) | join("; "))' "$STRATEGY")"
+PLANNER_GOAL="$TASK_GOAL"
+if [[ -n "$SUMMARY_CONSTRAINTS" ]]; then
+  PLANNER_GOAL+=$'\n'"Constraints: $SUMMARY_CONSTRAINTS"
+fi
+if [[ -n "$SUMMARY_DELIVERABLES" ]]; then
+  PLANNER_GOAL+=$'\n'"Deliverables: $SUMMARY_DELIVERABLES"
+fi
+if [[ -n "$SUMMARY_NOTES" ]]; then
+  PLANNER_GOAL+=$'\n'"Notes: $SUMMARY_NOTES"
+fi
 OWNER="$(jq -r '.owner // "planner-ops"' "$STRATEGY")"
 RISK="$(jq -r '.risk_level // "MEDIUM"' "$STRATEGY")"
 BUDGET_SECONDS="$(jq -r '.budget.max_execution_time_seconds // 3600' "$STRATEGY")"
@@ -42,7 +55,7 @@ NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 PRIMARY_ID="primary_${TASK_ID#task_}"
 CHECKLIST_ID="CL_${TASK_ID#task_}"
 
-RELATED_COMPLETED_TASKS="$(python3 - "$TITLE" "$GOAL" "$COMPLETED_CONTEXT_FILE" <<'PY'
+RELATED_COMPLETED_TASKS="$(python3 - "$TITLE" "$PLANNER_GOAL" "$COMPLETED_CONTEXT_FILE" <<'PY'
 import json
 import re
 import sys
@@ -184,7 +197,7 @@ if [[ "$EFFECTIVE_THREADS" -lt 1 ]]; then
   EFFECTIVE_THREADS=1
 fi
 
-EST_MINUTES="$(estimate_minutes_from_goal "$GOAL")"
+EST_MINUTES="$(estimate_minutes_from_goal "$PLANNER_GOAL")"
 TARGET_MID=$(( (SPLIT_TARGET_MIN + SPLIT_TARGET_MAX) / 2 ))
 if [[ "$TARGET_MID" -lt 1 ]]; then
   TARGET_MID=60
@@ -215,7 +228,7 @@ fi
 
 if ! grep -Fq "$PRIMARY_ID" "$PRIMARY_FILE"; then
   printf '| %s | %s | %s | %s | %s | P1 | STARTED | YES |\n' \
-    "$PRIMARY_ID" "$TITLE" "$GOAL" "risk=$RISK; split_units=$SPLIT_UNITS; related_completed=$RELATED_COMPLETED_TASKS" "delivery files + unittest pass" >> "$PRIMARY_FILE"
+    "$PRIMARY_ID" "$TITLE" "$PLANNER_GOAL" "risk=$RISK; split_units=$SPLIT_UNITS; related_completed=$RELATED_COMPLETED_TASKS" "delivery files + unittest pass" >> "$PRIMARY_FILE"
 fi
 
 if ! grep -Fq "$CHECKLIST_ID" "$CHECKLIST_FILE"; then
@@ -238,7 +251,7 @@ for i in $(seq 1 "$SPLIT_UNITS"); do
   suffix="$(printf '%03d' "$i")"
   child_id="task_${TASK_ID#task_}_c${suffix}"
   child_title="${TITLE} [unit ${i}/${SPLIT_UNITS}]"
-  child_goal="${GOAL} (subtask ${i}/${SPLIT_UNITS})"
+  child_goal="${TASK_GOAL} (subtask ${i}/${SPLIT_UNITS})"
   child_budget_seconds="$(( (BUDGET_SECONDS + SPLIT_UNITS - 1) / SPLIT_UNITS ))"
   strategy_tmp="$(mktemp "$TASK_DIR/.child_strategy.XXXXXX.json")"
   jq -n \

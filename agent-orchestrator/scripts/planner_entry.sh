@@ -79,7 +79,31 @@ runtime = {}
 if runtime_path.exists():
     runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
 
-goal = str(strategy.get("goal", "") or "")
+summary_input = strategy.get("summary_input") or {}
+task_goal = str(summary_input.get("task_goal") or strategy.get("goal", "") or "")
+constraints = [
+    str(v).strip()
+    for v in (summary_input.get("constraints") or [])
+    if isinstance(v, str) and str(v).strip()
+]
+deliverables = [
+    str(v).strip()
+    for v in (summary_input.get("deliverables") or [])
+    if isinstance(v, str) and str(v).strip()
+]
+notes = [
+    str(v).strip()
+    for v in (summary_input.get("notes") or [])
+    if isinstance(v, str) and str(v).strip()
+]
+analysis_parts = [task_goal]
+if constraints:
+    analysis_parts.append("Constraints: " + "; ".join(constraints))
+if deliverables:
+    analysis_parts.append("Deliverables: " + "; ".join(deliverables))
+if notes:
+    analysis_parts.append("Notes: " + "; ".join(notes))
+goal = "\n".join(part for part in analysis_parts if part.strip())
 budget = strategy.get("budget", {}) or {}
 budget_seconds = int(budget.get("max_execution_time_seconds", 3600) or 3600)
 child_task = bool(meta.get("parent_task_id"))
@@ -185,7 +209,10 @@ if llm_enabled and api_key:
                     "content": "\n".join(
                         [
                             "Decide task mode as strict JSON only.",
-                            f"Goal: {goal}",
+                            f"Goal: {task_goal}",
+                            f"Constraints: {'; '.join(constraints) if constraints else '(none)'}",
+                            f"Deliverables: {'; '.join(deliverables) if deliverables else '(none)'}",
+                            f"Notes: {'; '.join(notes) if notes else '(none)'}",
                             f"Budget seconds: {budget_seconds}",
                             f"Estimated minutes: {estimated_minutes}",
                             f"Artifact count hint: {artifact_count_hint}",
