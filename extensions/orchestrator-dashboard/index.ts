@@ -25,7 +25,7 @@ import { registerOrchestratorHttpRoutes } from "./orchestrate-http.js";
 import { createOrchestrateCommandHandlers } from "./orchestrate-command-deps.js";
 import { handleBeforeAgentStartHook } from "./orchestrate-session-agent-hook.js";
 import { registerOrchestratorOverviewGatewayMethod } from "./orchestrate-overview-gateway.js";
-import { buildCommandHandlerDeps, buildHttpRouteDeps } from "./orchestrate-plugin-runtime.js";
+import { buildOrchestratePluginRuntime } from "./orchestrate-plugin-runtime.js";
 import {
   readOrchestrateSessionStore,
   readPathStateStore,
@@ -1370,30 +1370,54 @@ const orchestratorDashboardPlugin = {
       },
     });
 
-    const commandHandlers = createOrchestrateCommandHandlers(
-      buildCommandHandlerDeps({
+    const pluginRuntime = buildOrchestratePluginRuntime({
+      api,
       repoRoot,
       basePath,
+      apiBasePath,
       cfg: {
         runnerEnabled: cfg.runnerEnabled,
         runnerFallbackEnabled: cfg.runnerFallbackEnabled,
+        requireGatewayAuth: cfg.requireGatewayAuth,
       },
       runnerTimerActive: Boolean(runnerTimer),
       paths: {
-        orchestrateRequestsDir: paths.orchestrateRequestsDir,
-        taskFoldersRoot: paths.taskFoldersRoot,
-        dashboardJson: paths.dashboardJson,
-        systemHealthJson: paths.systemHealthJson,
-        executionRuntime: paths.executionRuntime,
+        statePaths: {
+          pathState: paths.pathState,
+          orchestrateSessionsDir: paths.orchestrateSessionsDir,
+          orchestrateRequestsDir: paths.orchestrateRequestsDir,
+        },
+        command: {
+          orchestrateRequestsDir: paths.orchestrateRequestsDir,
+          taskFoldersRoot: paths.taskFoldersRoot,
+          dashboardJson: paths.dashboardJson,
+          systemHealthJson: paths.systemHealthJson,
+          executionRuntime: paths.executionRuntime,
+        },
+        httpRoutePaths: {
+          ...paths,
+        },
+        httpNames: {
+          dashboardJson: paths.dashboardJson,
+          systemHealthJson: paths.systemHealthJson,
+          plannerCurrent: paths.plannerCurrent,
+          plannerProperties: paths.plannerProperties,
+          auditPolicy: paths.auditPolicy,
+          auditHistory: paths.history,
+          snapshotScript: paths.snapshotScript,
+          rollbackScript: paths.rollbackScript,
+        },
+        eventsPath,
+        overview: {
+          dashboardJson: paths.dashboardJson,
+          systemHealthJson: paths.systemHealthJson,
+        },
       },
-      readOrchestrateSession,
-      writeOrchestrateSession,
-      readPathState,
-      writePathState,
-      statePaths: {
-        pathState: paths.pathState,
-        orchestrateSessionsDir: paths.orchestrateSessionsDir,
-        orchestrateRequestsDir: paths.orchestrateRequestsDir,
+      state: {
+        readOrchestrateSession,
+        writeOrchestrateSession,
+        readPathState,
+        writePathState,
       },
       io: {
         fileExists,
@@ -1417,14 +1441,20 @@ const orchestratorDashboardPlugin = {
         runnerBatchSize,
         runnerMaxParallel,
       },
-      runWhitelistedScript,
-      emitEvent,
-      buildWorkerIdFromTaskId,
-      trimOutput,
-      renderRequiredConfigChecklist,
-      renderOrchestrateHelp,
-      }),
-    );
+      configService,
+      helpers: {
+        emitEvent,
+        runWhitelistedScript,
+        runScript,
+        buildWorkerIdFromTaskId,
+        trimOutput,
+        renderRequiredConfigChecklist,
+        renderOrchestrateHelp,
+        updatePlainKvText,
+        updateListKvText,
+      },
+    });
+    const commandHandlers = createOrchestrateCommandHandlers(pluginRuntime.commandDeps);
 
     api.on("before_agent_start", async (event, ctx) => {
       return handleBeforeAgentStartHook({
@@ -1520,58 +1550,9 @@ const orchestratorDashboardPlugin = {
       },
     });
 
-    registerOrchestratorHttpRoutes(
-      buildHttpRouteDeps({
-      api,
-      cfg,
-      basePath,
-      apiBasePath,
-      repoRoot,
-      paths,
-      io: {
-        fileExists,
-        readJsonOrDefault,
-        readText,
-        writeTextAtomic,
-        writeJsonAtomic,
-        readNdjson,
-      },
-      pathsByName: {
-        dashboardJson: paths.dashboardJson,
-        systemHealthJson: paths.systemHealthJson,
-        plannerCurrent: paths.plannerCurrent,
-        plannerProperties: paths.plannerProperties,
-        auditPolicy: paths.auditPolicy,
-        auditHistory: paths.history,
-        snapshotScript: paths.snapshotScript,
-        rollbackScript: paths.rollbackScript,
-      },
-      runtime: {
-        eventsPath,
-      },
-      helpers: {
-        loadCurrentConfig: configService.loadCurrentConfig,
-        validateDraft: configService.validateDraft,
-        acquireLock: configService.acquireLock,
-        releaseLock: configService.releaseLock,
-        emitEvent,
-        runScript,
-        updatePlainKvText,
-        updateListKvText,
-      },
-      }),
-    );
+    registerOrchestratorHttpRoutes(pluginRuntime.httpDeps);
 
-    registerOrchestratorOverviewGatewayMethod({
-      api,
-      io: {
-        readJsonOrDefault,
-      },
-      paths: {
-        dashboardJson: paths.dashboardJson,
-        systemHealthJson: paths.systemHealthJson,
-      },
-    });
+    registerOrchestratorOverviewGatewayMethod(pluginRuntime.overviewDeps);
 
     api.logger.info(
       `orchestrator-dashboard: mounted ui=${basePath} api=${apiBasePath} repoRoot=${repoRoot}`,

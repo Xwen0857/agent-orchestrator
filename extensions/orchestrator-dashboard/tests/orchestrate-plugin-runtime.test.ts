@@ -1,32 +1,71 @@
-import { buildCommandHandlerDeps, buildHttpRouteDeps } from "../orchestrate-plugin-runtime.js";
+import { buildOrchestratePluginRuntime } from "../orchestrate-plugin-runtime.js";
 import { describe, expect, it, vi } from "vitest";
 
-describe("orchestrate plugin runtime factories", () => {
-  it("returns command deps unchanged", () => {
-    const deps = {
+describe("orchestrate plugin runtime composer", () => {
+  it("builds normalized command, http, and overview dependency bundles", () => {
+    const api = {
+      registerHttpRoute: vi.fn(),
+      registerHttpHandler: vi.fn(),
+      registerGatewayMethod: vi.fn(),
+    } as unknown as Parameters<typeof buildOrchestratePluginRuntime>[0]["api"];
+    const readJsonOrDefault = async <T>(_targetPath: string, fallback: T): Promise<T> => fallback;
+    const emitEvent = vi.fn(async () => {});
+    const runWhitelistedScript = vi.fn(async () => ({ stdout: "", stderr: "" }));
+    const runScript = vi.fn(async () => ({ stdout: "", stderr: "" }));
+
+    const runtime = buildOrchestratePluginRuntime({
+      api,
       repoRoot: "/repo",
       basePath: "/plugins/orchestrator",
-      cfg: { runnerEnabled: true, runnerFallbackEnabled: false },
+      apiBasePath: "/api/plugins/orchestrator",
+      cfg: {
+        runnerEnabled: true,
+        runnerFallbackEnabled: false,
+        requireGatewayAuth: true,
+      },
       runnerTimerActive: false,
       paths: {
-        orchestrateRequestsDir: "/repo/requests",
-        taskFoldersRoot: "/repo/tasks",
-        dashboardJson: "/repo/dashboard.json",
-        systemHealthJson: "/repo/system.json",
-        executionRuntime: "/repo/runtime.json",
+        statePaths: {
+          pathState: "/repo/path_state.json",
+          orchestrateSessionsDir: "/repo/sessions",
+          orchestrateRequestsDir: "/repo/requests",
+        },
+        command: {
+          orchestrateRequestsDir: "/repo/requests",
+          taskFoldersRoot: "/repo/tasks",
+          dashboardJson: "/repo/dashboard.json",
+          systemHealthJson: "/repo/system_health.json",
+          executionRuntime: "/repo/runtime.json",
+        },
+        httpRoutePaths: {
+          dashboardJson: "/repo/dashboard.json",
+          systemHealthJson: "/repo/system_health.json",
+        },
+        httpNames: {
+          dashboardJson: "/repo/dashboard.json",
+          systemHealthJson: "/repo/system_health.json",
+          plannerCurrent: "/repo/current",
+          plannerProperties: "/repo/properties",
+          auditPolicy: "/repo/audit.json",
+          auditHistory: "/repo/history.ndjson",
+          snapshotScript: "/repo/snapshot.sh",
+          rollbackScript: "/repo/rollback.sh",
+        },
+        eventsPath: "/repo/events.ndjson",
+        overview: {
+          dashboardJson: "/repo/dashboard.json",
+          systemHealthJson: "/repo/system_health.json",
+        },
       },
-      readOrchestrateSession: vi.fn(),
-      writeOrchestrateSession: vi.fn(),
-      readPathState: vi.fn(),
-      writePathState: vi.fn(),
-      statePaths: {
-        pathState: "/repo/path_state.json",
-        orchestrateSessionsDir: "/repo/sessions",
-        orchestrateRequestsDir: "/repo/requests",
+      state: {
+        readOrchestrateSession: vi.fn(),
+        writeOrchestrateSession: vi.fn(),
+        readPathState: vi.fn(),
+        writePathState: vi.fn(),
       },
       io: {
         fileExists: vi.fn(),
-        readJsonOrDefault: vi.fn(),
+        readJsonOrDefault,
         writeJsonAtomic: vi.fn(),
         readNdjson: vi.fn(),
         readText: vi.fn(),
@@ -46,56 +85,38 @@ describe("orchestrate plugin runtime factories", () => {
         runnerBatchSize: 4,
         runnerMaxParallel: 2,
       },
-      runWhitelistedScript: vi.fn(),
-      emitEvent: vi.fn(),
-      buildWorkerIdFromTaskId: vi.fn(),
-      trimOutput: vi.fn(),
-      renderRequiredConfigChecklist: vi.fn(),
-      renderOrchestrateHelp: vi.fn(),
-    } as Parameters<typeof buildCommandHandlerDeps>[0];
-
-    expect(buildCommandHandlerDeps(deps)).toBe(deps);
-  });
-
-  it("returns http deps unchanged", () => {
-    const deps = {
-      api: { registerHttpRoute: vi.fn(), registerHttpHandler: vi.fn() },
-      cfg: { requireGatewayAuth: true },
-      basePath: "/plugins/orchestrator",
-      apiBasePath: "/api/plugins/orchestrator",
-      repoRoot: "/repo",
-      paths: {},
-      io: {
-        fileExists: vi.fn(),
-        readJsonOrDefault: vi.fn(),
-        readText: vi.fn(),
-        writeTextAtomic: vi.fn(),
-        writeJsonAtomic: vi.fn(),
-        readNdjson: vi.fn(),
-      },
-      pathsByName: {
-        dashboardJson: "/repo/dashboard.json",
-        systemHealthJson: "/repo/system.json",
-        plannerCurrent: "/repo/current",
-        plannerProperties: "/repo/properties",
-        auditPolicy: "/repo/audit.json",
-        auditHistory: "/repo/history.ndjson",
-        snapshotScript: "/repo/snapshot.sh",
-        rollbackScript: "/repo/rollback.sh",
-      },
-      runtime: { eventsPath: "/repo/events.ndjson" },
-      helpers: {
+      configService: {
         loadCurrentConfig: vi.fn(),
         validateDraft: vi.fn(),
         acquireLock: vi.fn(),
         releaseLock: vi.fn(),
-        emitEvent: vi.fn(),
-        runScript: vi.fn(),
+      },
+      helpers: {
+        emitEvent,
+        runWhitelistedScript,
+        runScript,
+        buildWorkerIdFromTaskId: vi.fn(),
+        trimOutput: vi.fn(),
+        renderRequiredConfigChecklist: vi.fn(),
+        renderOrchestrateHelp: vi.fn(),
         updatePlainKvText: vi.fn(),
         updateListKvText: vi.fn(),
       },
-    } as unknown as Parameters<typeof buildHttpRouteDeps>[0];
+    });
 
-    expect(buildHttpRouteDeps(deps)).toBe(deps);
+    expect(runtime.commandDeps.repoRoot).toBe("/repo");
+    expect(runtime.commandDeps.io.readJsonOrDefault).toBe(readJsonOrDefault);
+    expect(runtime.commandDeps.runWhitelistedScript).toBe(runWhitelistedScript);
+    expect(runtime.commandDeps.emitEvent).toBe(emitEvent);
+
+    expect(runtime.httpDeps.api).toBe(api);
+    expect(runtime.httpDeps.cfg.requireGatewayAuth).toBe(true);
+    expect(runtime.httpDeps.helpers.emitEvent).toBe(emitEvent);
+    expect(runtime.httpDeps.helpers.runScript).toBe(runScript);
+    expect(runtime.httpDeps.runtime.eventsPath).toBe("/repo/events.ndjson");
+
+    expect(runtime.overviewDeps.api).toBe(api);
+    expect(runtime.overviewDeps.io.readJsonOrDefault).toBe(readJsonOrDefault);
+    expect(runtime.overviewDeps.paths.dashboardJson).toBe("/repo/dashboard.json");
   });
 });
