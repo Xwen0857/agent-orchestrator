@@ -5,8 +5,14 @@ import type { PathState } from "./orchestrate-path.js";
 import type { AgentRuntimeController } from "./orchestrate-agent-runtime.js";
 import type { ExecutionRuntimeReader } from "./orchestrate-execution-runtime.js";
 import type { OrchestrateStatePaths } from "./orchestrate-state.js";
-import type { RuntimeConsistencyController } from "./orchestrate-runtime-consistency.js";
-import type { RunnerRuntimeController } from "./orchestrate-runner-runtime.js";
+import type {
+  RuntimeConsistencyController,
+  RuntimeConsistencySnapshot,
+} from "./orchestrate-runtime-consistency.js";
+import type {
+  RunnerRuntimeController,
+  RunnerSnapshot,
+} from "./orchestrate-runner-runtime.js";
 import type { OrchestrateSessionState } from "./orchestrate-session.js";
 
 type CommandDeps = Parameters<typeof createOrchestrateCommandHandlers>[0];
@@ -82,35 +88,36 @@ export function buildOrchestratePluginRuntime(
     writeTextAtomic: params.io.writeTextAtomic,
   };
 
-  const commandRuntime: CommandDeps["runtime"] = {
+  const stateAccess = {
+    readOrchestrateSession: params.state.readOrchestrateSession,
+    writeOrchestrateSession: params.state.writeOrchestrateSession,
+    readPathState: params.state.readPathState,
+    writePathState: params.state.writePathState,
+  };
+
+  const runtimeReaders = {
     getRunnerLockMtime: params.controllers.runner.getRunnerLockMtime,
     loadExecutionRuntime: params.controllers.execution.loadExecutionRuntime,
     getExternalRunnerStatus: params.controllers.runner.getExternalRunnerStatus,
     ensureRunnerStarted: params.controllers.runner.ensureRunnerStarted,
-    get runnerStatus() {
-      return params.controllers.runner.getSnapshot().runnerStatus;
-    },
-    get runnerLastTickAt() {
-      return params.controllers.runner.getSnapshot().runnerLastTickAt;
-    },
-    get runnerLastTickResult() {
-      return params.controllers.runner.getSnapshot().runnerLastTickResult;
-    },
-    get runnerLastTickError() {
-      return params.controllers.runner.getSnapshot().runnerLastTickError;
-    },
-    get runnerIntervalSec() {
-      return params.controllers.runner.getSnapshot().runnerIntervalSec;
-    },
-    get runnerExecutionMode() {
-      return params.controllers.runner.getSnapshot().runnerExecutionMode;
-    },
-    get runnerBatchSize() {
-      return params.controllers.runner.getSnapshot().runnerBatchSize;
-    },
-    get runnerMaxParallel() {
-      return params.controllers.runner.getSnapshot().runnerMaxParallel;
-    },
+    getRunnerSnapshot: (): RunnerSnapshot => params.controllers.runner.getSnapshot(),
+    getConsistencySnapshot: (): RuntimeConsistencySnapshot =>
+      params.controllers.consistency.getSnapshot(),
+  };
+
+  const uiRenderHelpers = {
+    trimOutput: params.helpers.trimOutput,
+    renderRequiredConfigChecklist: params.helpers.renderRequiredConfigChecklist,
+    renderOrchestrateHelp: params.helpers.renderOrchestrateHelp,
+  };
+
+  const commandRuntime: CommandDeps["runtime"] = {
+    getRunnerLockMtime: runtimeReaders.getRunnerLockMtime,
+    loadExecutionRuntime: runtimeReaders.loadExecutionRuntime,
+    getExternalRunnerStatus: runtimeReaders.getExternalRunnerStatus,
+    ensureRunnerStarted: runtimeReaders.ensureRunnerStarted,
+    getRunnerSnapshot: runtimeReaders.getRunnerSnapshot,
+    getConsistencySnapshot: runtimeReaders.getConsistencySnapshot,
   };
 
   return {
@@ -121,14 +128,13 @@ export function buildOrchestratePluginRuntime(
         runnerEnabled: params.cfg.runnerEnabled,
         runnerFallbackEnabled: params.cfg.runnerFallbackEnabled,
       },
-      runnerTimerActive: params.controllers.runner.getSnapshot().runnerTimerActive,
       paths: {
         ...params.paths.command,
       },
-      readOrchestrateSession: params.state.readOrchestrateSession,
-      writeOrchestrateSession: params.state.writeOrchestrateSession,
-      readPathState: params.state.readPathState,
-      writePathState: params.state.writePathState,
+      readOrchestrateSession: stateAccess.readOrchestrateSession,
+      writeOrchestrateSession: stateAccess.writeOrchestrateSession,
+      readPathState: stateAccess.readPathState,
+      writePathState: stateAccess.writePathState,
       statePaths: {
         ...params.paths.statePaths,
       },
@@ -137,9 +143,9 @@ export function buildOrchestratePluginRuntime(
       runWhitelistedScript: params.helpers.runWhitelistedScript,
       emitEvent: params.helpers.emitEvent,
       buildWorkerIdFromTaskId: params.helpers.buildWorkerIdFromTaskId,
-      trimOutput: params.helpers.trimOutput,
-      renderRequiredConfigChecklist: params.helpers.renderRequiredConfigChecklist,
-      renderOrchestrateHelp: params.helpers.renderOrchestrateHelp,
+      trimOutput: uiRenderHelpers.trimOutput,
+      renderRequiredConfigChecklist: uiRenderHelpers.renderRequiredConfigChecklist,
+      renderOrchestrateHelp: uiRenderHelpers.renderOrchestrateHelp,
     },
     httpDeps: {
       api: params.api,

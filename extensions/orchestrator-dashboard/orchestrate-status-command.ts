@@ -4,6 +4,8 @@ import {
   type RuntimeStatsSnapshot,
 } from "./orchestrate-response.js";
 import { buildTaskStatusResponseParams } from "./orchestrate-view-model.js";
+import type { RuntimeConsistencySnapshot } from "./orchestrate-runtime-consistency.js";
+import type { RunnerSnapshot } from "./orchestrate-runner-runtime.js";
 
 type StatusPaths = {
   dashboardJson: string;
@@ -17,7 +19,6 @@ type HandleStatusSubcommandParams = {
     runnerEnabled: boolean;
     runnerFallbackEnabled: boolean;
   };
-  runnerTimerActive: boolean;
   ensureRunnerStarted: () => Promise<unknown>;
   paths: StatusPaths;
   io: {
@@ -30,17 +31,8 @@ type HandleStatusSubcommandParams = {
     getRunnerLockMtime: () => Promise<string>;
     loadExecutionRuntime: () => Promise<RuntimeStatsSnapshot & { rolePolicyPath: string }>;
     getExternalRunnerStatus: () => Promise<ExternalRunnerSnapshot>;
-    runnerStatus: string;
-    runnerLastTickAt: string;
-    runnerLastTickResult: string;
-    runnerLastTickError: string;
-    runnerIntervalSec: number;
-    runnerExecutionMode: string;
-    runnerBatchSize: number;
-    runnerMaxParallel: number;
-    runtimeConsistency: string;
-    runtimeSignature: string;
-    runtimeExpectedSignature: string;
+    getRunnerSnapshot: () => RunnerSnapshot;
+    getConsistencySnapshot: () => RuntimeConsistencySnapshot;
   };
   renderOrchestrateHelp: () => string;
 };
@@ -48,18 +40,20 @@ type HandleStatusSubcommandParams = {
 export async function handleStatusSubcommand(
   params: HandleStatusSubcommandParams,
 ): Promise<string> {
-  const { payload, cfg, runnerTimerActive, ensureRunnerStarted, paths, io, runtime } = params;
+  const { payload, cfg, ensureRunnerStarted, paths, io, runtime } = params;
 
-  if (cfg.runnerEnabled && !runnerTimerActive) {
+  if (cfg.runnerEnabled && !runtime.getRunnerSnapshot().runnerTimerActive) {
     try {
       await ensureRunnerStarted();
     } catch {
       // keep status query non-fatal
     }
   }
+  const runnerSnapshot = runtime.getRunnerSnapshot();
 
   const taskId = payload.trim();
   if (!taskId) {
+    const consistencySnapshot = runtime.getConsistencySnapshot();
     const [dashboard, health, lockMtime, runtimeStats, externalRunner] = await Promise.all([
       io.readJsonOrDefault<Record<string, unknown>>(paths.dashboardJson, {}),
       io.readJsonOrDefault<Record<string, unknown>>(paths.systemHealthJson, {}),
@@ -78,13 +72,13 @@ export async function handleStatusSubcommand(
     return [
       `active_tasks: ${String(active.length)}`,
       `system_status: ${String((health as Record<string, unknown>).status ?? "UNKNOWN")}`,
-      `scheduler_status: ${runtime.runnerStatus}`,
-      `last_tick_at: ${runtime.runnerLastTickAt || "(none)"}`,
-      `last_tick_result: ${runtime.runnerLastTickResult}${runtime.runnerLastTickError ? ` (${runtime.runnerLastTickError})` : ""}`,
-      `runner_interval_sec: ${String(runtime.runnerIntervalSec)}`,
-      `runner_execution_mode: ${runtime.runnerExecutionMode}`,
-      `runner_batch_size: ${String(runtime.runnerBatchSize)}`,
-      `runner_max_parallel: ${String(runtime.runnerMaxParallel)}`,
+      `scheduler_status: ${runnerSnapshot.runnerStatus}`,
+      `last_tick_at: ${runnerSnapshot.runnerLastTickAt || "(none)"}`,
+      `last_tick_result: ${runnerSnapshot.runnerLastTickResult}${runnerSnapshot.runnerLastTickError ? ` (${runnerSnapshot.runnerLastTickError})` : ""}`,
+      `runner_interval_sec: ${String(runnerSnapshot.runnerIntervalSec)}`,
+      `runner_execution_mode: ${runnerSnapshot.runnerExecutionMode}`,
+      `runner_batch_size: ${String(runnerSnapshot.runnerBatchSize)}`,
+      `runner_max_parallel: ${String(runnerSnapshot.runnerMaxParallel)}`,
       `logical_threads: ${String(runtimeStats.logicalThreads)}`,
       `effective_worker_threads: ${String(runtimeStats.effectiveWorkerThreads)}`,
       `parallel_limit: ${String(runtimeStats.parallelLimit)}`,
@@ -105,14 +99,14 @@ export async function handleStatusSubcommand(
       `acl_denied_count: ${String(runtimeStats.aclDeniedCount)}`,
       `acl_last_denied_at: ${runtimeStats.aclLastDeniedAt || "(none)"}`,
       `runner_lock_mtime: ${lockMtime || "(none)"}`,
-      `runtime_consistency: ${runtime.runtimeConsistency}`,
-      `runtime_signature: ${runtime.runtimeSignature || "(none)"}`,
-      `runtime_expected_signature: ${runtime.runtimeExpectedSignature || "(none)"}`,
+      `runtime_consistency: ${consistencySnapshot.runtimeConsistency}`,
+      `runtime_signature: ${consistencySnapshot.runtimeSignature || "(none)"}`,
+      `runtime_expected_signature: ${consistencySnapshot.runtimeExpectedSignature || "(none)"}`,
       `external_runner_running: ${externalRunner.running ? "true" : "false"}`,
       `external_runner_pid: ${externalRunner.pid > 0 ? String(externalRunner.pid) : "(none)"}`,
       `external_runner_last_tick_at: ${externalRunner.lastTickAt || "(none)"}`,
       `external_runner_last_exit_code: ${externalRunner.lastExitCode || "(none)"}`,
-      runtime.runnerStatus === "degraded" && cfg.runnerFallbackEnabled
+      runnerSnapshot.runnerStatus === "degraded" && cfg.runnerFallbackEnabled
         ? "runner_fallback_hint: bash agent-orchestrator/scripts/orchestrate_runner_daemon.sh start 10"
         : "runner_fallback_hint: (none)",
       top.length > 0 ? "top_active:" : "top_active: (none)",
@@ -156,24 +150,25 @@ export async function handleStatusSubcommand(
     runtime.loadExecutionRuntime(),
     runtime.getExternalRunnerStatus(),
   ]);
+  const consistencySnapshot = runtime.getConsistencySnapshot();
 
   return renderTaskStatusResponse(
     buildTaskStatusResponseParams({
       taskId,
       meta,
-      runnerStatus: runtime.runnerStatus,
-      runnerLastTickAt: runtime.runnerLastTickAt,
-      runnerLastTickResult: runtime.runnerLastTickResult,
-      runnerLastTickError: runtime.runnerLastTickError,
-      runnerIntervalSec: runtime.runnerIntervalSec,
-      runnerExecutionMode: runtime.runnerExecutionMode,
-      runnerBatchSize: runtime.runnerBatchSize,
-      runnerMaxParallel: runtime.runnerMaxParallel,
+      runnerStatus: runnerSnapshot.runnerStatus,
+      runnerLastTickAt: runnerSnapshot.runnerLastTickAt,
+      runnerLastTickResult: runnerSnapshot.runnerLastTickResult,
+      runnerLastTickError: runnerSnapshot.runnerLastTickError,
+      runnerIntervalSec: runnerSnapshot.runnerIntervalSec,
+      runnerExecutionMode: runnerSnapshot.runnerExecutionMode,
+      runnerBatchSize: runnerSnapshot.runnerBatchSize,
+      runnerMaxParallel: runnerSnapshot.runnerMaxParallel,
       runtimeStats,
       lockMtime,
-      runtimeConsistency: runtime.runtimeConsistency,
-      runtimeSignature: runtime.runtimeSignature,
-      runtimeExpectedSignature: runtime.runtimeExpectedSignature,
+      runtimeConsistency: consistencySnapshot.runtimeConsistency,
+      runtimeSignature: consistencySnapshot.runtimeSignature,
+      runtimeExpectedSignature: consistencySnapshot.runtimeExpectedSignature,
       externalRunner,
       runnerFallbackEnabled: cfg.runnerFallbackEnabled,
       amendmentCount,

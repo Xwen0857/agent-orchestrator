@@ -19,6 +19,8 @@ import {
   type RuntimeStatsSnapshot,
 } from "./orchestrate-response.js";
 import { buildRunSuccessResponseParams } from "./orchestrate-view-model.js";
+import type { RuntimeConsistencySnapshot } from "./orchestrate-runtime-consistency.js";
+import type { RunnerSnapshot } from "./orchestrate-runner-runtime.js";
 
 type RunPaths = {
   orchestrateRequestsDir: string;
@@ -60,14 +62,8 @@ type HandleRunSubcommandParams = {
   ensureRunnerStarted: () => Promise<{ schedulerStatus: string; lastTickAt: string; intervalSec: number }>;
   getExternalRunnerStatus: () => Promise<ExternalRunnerSnapshot>;
   runtime: {
-    runnerExecutionMode: string;
-    runnerBatchSize: number;
-    runnerMaxParallel: number;
-    runnerLastTickResult: string;
-    runnerLastTickError: string;
-    runtimeConsistency: string;
-    runtimeSignature: string;
-    runtimeExpectedSignature: string;
+    getRunnerSnapshot: () => RunnerSnapshot;
+    getConsistencySnapshot: () => RuntimeConsistencySnapshot;
     runnerFallbackEnabled: boolean;
   };
   renderRequiredConfigChecklist: () => string;
@@ -265,6 +261,8 @@ export async function handleRunSubcommand(
       params.getExternalRunnerStatus(),
     ]);
     const requestedModeResolved = String(meta.requested_mode ?? requestedMode);
+    const runnerSnapshot = params.runtime.getRunnerSnapshot();
+    const consistencySnapshot = params.runtime.getConsistencySnapshot();
     const planningDecisionMeta =
       meta.planning_decision &&
       typeof meta.planning_decision === "object" &&
@@ -293,12 +291,12 @@ export async function handleRunSubcommand(
       dashboard_path: params.basePath,
       scheduler_status: runnerInfo.schedulerStatus,
       last_tick_at: runnerInfo.lastTickAt,
-      last_tick_result: params.runtime.runnerLastTickResult,
-      last_tick_error_summary: params.runtime.runnerLastTickError,
+      last_tick_result: runnerSnapshot.runnerLastTickResult,
+      last_tick_error_summary: runnerSnapshot.runnerLastTickError,
       runner_interval_sec: runnerInfo.intervalSec,
-      runner_execution_mode: params.runtime.runnerExecutionMode,
-      runner_batch_size: params.runtime.runnerBatchSize,
-      runner_max_parallel: params.runtime.runnerMaxParallel,
+      runner_execution_mode: runnerSnapshot.runnerExecutionMode,
+      runner_batch_size: runnerSnapshot.runnerBatchSize,
+      runner_max_parallel: runnerSnapshot.runnerMaxParallel,
       logical_threads: runtimeStats.logicalThreads,
       effective_worker_threads: runtimeStats.effectiveWorkerThreads,
       requested_mode: requestedModeResolved,
@@ -357,9 +355,9 @@ export async function handleRunSubcommand(
       workspace_last_synced_seq: Number(meta.workspace_last_synced_seq ?? 0),
       project_id: String(meta.project_id ?? "prj_default"),
       run_root: String(meta.run_root ?? "(none)"),
-      runtime_consistency: params.runtime.runtimeConsistency,
-      runtime_signature: params.runtime.runtimeSignature || "",
-      runtime_expected_signature: params.runtime.runtimeExpectedSignature || "",
+      runtime_consistency: consistencySnapshot.runtimeConsistency,
+      runtime_signature: consistencySnapshot.runtimeSignature || "",
+      runtime_expected_signature: consistencySnapshot.runtimeExpectedSignature || "",
       external_runner_running: externalRunner.running,
       external_runner_pid: externalRunner.pid,
       external_runner_last_tick_at: externalRunner.lastTickAt,
@@ -396,20 +394,20 @@ export async function handleRunSubcommand(
         basePath: params.basePath,
         runnerStatus: runnerInfo.schedulerStatus,
         runnerLastTickAt: runnerInfo.lastTickAt,
-        runnerLastTickResult: params.runtime.runnerLastTickResult,
-        runnerLastTickError: params.runtime.runnerLastTickError,
+        runnerLastTickResult: runnerSnapshot.runnerLastTickResult,
+        runnerLastTickError: runnerSnapshot.runnerLastTickError,
         runnerIntervalSec: runnerInfo.intervalSec,
-        runnerExecutionMode: params.runtime.runnerExecutionMode,
-        runnerBatchSize: params.runtime.runnerBatchSize,
-        runnerMaxParallel: params.runtime.runnerMaxParallel,
+        runnerExecutionMode: runnerSnapshot.runnerExecutionMode,
+        runnerBatchSize: runnerSnapshot.runnerBatchSize,
+        runnerMaxParallel: runnerSnapshot.runnerMaxParallel,
         runtimeStats,
         requestedModeDefault: requestedModeResolved,
         meta,
         workspaceConfigSourceDefault: workspaceResolved.source,
         workspaceValidatedDefault: workspaceResolved.validated,
-        runtimeConsistency: params.runtime.runtimeConsistency,
-        runtimeSignature: params.runtime.runtimeSignature,
-        runtimeExpectedSignature: params.runtime.runtimeExpectedSignature,
+        runtimeConsistency: consistencySnapshot.runtimeConsistency,
+        runtimeSignature: consistencySnapshot.runtimeSignature,
+        runtimeExpectedSignature: consistencySnapshot.runtimeExpectedSignature,
         externalRunner,
         runnerFallbackEnabled: params.runtime.runnerFallbackEnabled,
         checklistText: params.renderRequiredConfigChecklist(),

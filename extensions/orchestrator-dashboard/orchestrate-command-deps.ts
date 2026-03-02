@@ -12,6 +12,8 @@ import type {
   ExternalRunnerSnapshot,
   RuntimeStatsSnapshot,
 } from "./orchestrate-response.js";
+import type { RunnerSnapshot } from "./orchestrate-runner-runtime.js";
+import type { RuntimeConsistencySnapshot } from "./orchestrate-runtime-consistency.js";
 
 type CommandCtx = {
   channel?: string;
@@ -28,7 +30,6 @@ type CreateOrchestrateCommandHandlersParams = {
     runnerEnabled: boolean;
     runnerFallbackEnabled: boolean;
   };
-  runnerTimerActive: boolean;
   paths: {
     orchestrateRequestsDir: string;
     taskFoldersRoot: string;
@@ -54,14 +55,8 @@ type CreateOrchestrateCommandHandlersParams = {
     loadExecutionRuntime: () => Promise<RuntimeStatsSnapshot & { rolePolicyPath?: string; projectsRoot: string }>;
     getExternalRunnerStatus: () => Promise<ExternalRunnerSnapshot>;
     ensureRunnerStarted: () => Promise<{ schedulerStatus: string; lastTickAt: string; intervalSec: number }>;
-    runnerStatus: string;
-    runnerLastTickAt: string;
-    runnerLastTickResult: string;
-    runnerLastTickError: string;
-    runnerIntervalSec: number;
-    runnerExecutionMode: string;
-    runnerBatchSize: number;
-    runnerMaxParallel: number;
+    getRunnerSnapshot: () => RunnerSnapshot;
+    getConsistencySnapshot: () => RuntimeConsistencySnapshot;
   };
   runWhitelistedScript: (params: {
     repoRoot: string;
@@ -116,14 +111,10 @@ export function createOrchestrateCommandHandlers(
         writePathState: params.writePathState,
       });
     },
-    handleStatus: async (
-      payload: string,
-      consistency: { runtimeConsistency: string; runtimeSignature: string; runtimeExpectedSignature: string },
-    ): Promise<string> =>
+    handleStatus: async (payload: string): Promise<string> =>
       handleStatusSubcommand({
         payload,
         cfg: params.cfg,
-        runnerTimerActive: params.runnerTimerActive,
         ensureRunnerStarted: params.runtime.ensureRunnerStarted,
         paths: {
           dashboardJson: params.paths.dashboardJson,
@@ -146,17 +137,8 @@ export function createOrchestrateCommandHandlers(
             };
           },
           getExternalRunnerStatus: params.runtime.getExternalRunnerStatus,
-          runnerStatus: params.runtime.runnerStatus,
-          runnerLastTickAt: params.runtime.runnerLastTickAt,
-          runnerLastTickResult: params.runtime.runnerLastTickResult,
-          runnerLastTickError: params.runtime.runnerLastTickError,
-          runnerIntervalSec: params.runtime.runnerIntervalSec,
-          runnerExecutionMode: params.runtime.runnerExecutionMode,
-          runnerBatchSize: params.runtime.runnerBatchSize,
-          runnerMaxParallel: params.runtime.runnerMaxParallel,
-          runtimeConsistency: consistency.runtimeConsistency,
-          runtimeSignature: consistency.runtimeSignature,
-          runtimeExpectedSignature: consistency.runtimeExpectedSignature,
+          getRunnerSnapshot: params.runtime.getRunnerSnapshot,
+          getConsistencySnapshot: params.runtime.getConsistencySnapshot,
         },
         renderOrchestrateHelp: params.renderOrchestrateHelp,
       }),
@@ -198,11 +180,7 @@ export function createOrchestrateCommandHandlers(
         runWhitelistedScript: params.runWhitelistedScript,
         emitEvent: params.emitEvent,
       }),
-    handleRun: async (
-      payload: string,
-      ctx: CommandCtx,
-      consistency: { runtimeConsistency: string; runtimeSignature: string; runtimeExpectedSignature: string },
-    ): Promise<string> =>
+    handleRun: async (payload: string, ctx: CommandCtx): Promise<string> =>
       handleRunSubcommand({
         payload,
         ctx,
@@ -225,14 +203,8 @@ export function createOrchestrateCommandHandlers(
         ensureRunnerStarted: params.runtime.ensureRunnerStarted,
         getExternalRunnerStatus: params.runtime.getExternalRunnerStatus,
         runtime: {
-          runnerExecutionMode: params.runtime.runnerExecutionMode,
-          runnerBatchSize: params.runtime.runnerBatchSize,
-          runnerMaxParallel: params.runtime.runnerMaxParallel,
-          runnerLastTickResult: params.runtime.runnerLastTickResult,
-          runnerLastTickError: params.runtime.runnerLastTickError,
-          runtimeConsistency: consistency.runtimeConsistency,
-          runtimeSignature: consistency.runtimeSignature,
-          runtimeExpectedSignature: consistency.runtimeExpectedSignature,
+          getRunnerSnapshot: params.runtime.getRunnerSnapshot,
+          getConsistencySnapshot: params.runtime.getConsistencySnapshot,
           runnerFallbackEnabled: params.cfg.runnerFallbackEnabled,
         },
         renderRequiredConfigChecklist: params.renderRequiredConfigChecklist,

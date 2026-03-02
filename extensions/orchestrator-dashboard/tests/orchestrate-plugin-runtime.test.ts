@@ -160,7 +160,8 @@ describe("orchestrate plugin runtime composer", () => {
     expect(runtime.commandDeps.io.readJsonOrDefault).toBe(readJsonOrDefault);
     expect(runtime.commandDeps.runWhitelistedScript).toBe(runWhitelistedScript);
     expect(runtime.commandDeps.emitEvent).toBe(emitEvent);
-    expect(runtime.commandDeps.runtime.runnerStatus).toBe("started");
+    expect(runtime.commandDeps.runtime.getRunnerSnapshot().runnerStatus).toBe("started");
+    expect(runtime.commandDeps.runtime.getConsistencySnapshot().runtimeConsistency).toBe("ok");
     expect(runtime.commandDeps.runtime.ensureRunnerStarted).toBe(runnerController.ensureRunnerStarted);
 
     expect(runtime.httpDeps.api).toBe(api);
