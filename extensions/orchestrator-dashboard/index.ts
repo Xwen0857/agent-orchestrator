@@ -24,6 +24,8 @@ import { type PathState } from "./orchestrate-path.js";
 import { registerOrchestratorHttpRoutes } from "./orchestrate-http.js";
 import { createOrchestrateCommandHandlers } from "./orchestrate-command-deps.js";
 import { handleBeforeAgentStartHook } from "./orchestrate-session-agent-hook.js";
+import { registerOrchestratorOverviewGatewayMethod } from "./orchestrate-overview-gateway.js";
+import { buildCommandHandlerDeps, buildHttpRouteDeps } from "./orchestrate-plugin-runtime.js";
 import {
   readOrchestrateSessionStore,
   readPathStateStore,
@@ -1368,7 +1370,8 @@ const orchestratorDashboardPlugin = {
       },
     });
 
-    const commandHandlers = createOrchestrateCommandHandlers({
+    const commandHandlers = createOrchestrateCommandHandlers(
+      buildCommandHandlerDeps({
       repoRoot,
       basePath,
       cfg: {
@@ -1420,7 +1423,8 @@ const orchestratorDashboardPlugin = {
       trimOutput,
       renderRequiredConfigChecklist,
       renderOrchestrateHelp,
-    });
+      }),
+    );
 
     api.on("before_agent_start", async (event, ctx) => {
       return handleBeforeAgentStartHook({
@@ -1516,7 +1520,8 @@ const orchestratorDashboardPlugin = {
       },
     });
 
-    registerOrchestratorHttpRoutes({
+    registerOrchestratorHttpRoutes(
+      buildHttpRouteDeps({
       api,
       cfg,
       basePath,
@@ -1554,23 +1559,18 @@ const orchestratorDashboardPlugin = {
         updatePlainKvText,
         updateListKvText,
       },
-    });
+      }),
+    );
 
-    api.registerGatewayMethod("orchestrator.overview", async ({ respond }) => {
-      try {
-        const [dashboard, systemHealth] = await Promise.all([
-          readJsonOrDefault(paths.dashboardJson, {}),
-          readJsonOrDefault(paths.systemHealthJson, {}),
-        ]);
-        respond(true, {
-          dashboard,
-          systemHealth,
-          plugin: "orchestrator-dashboard",
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        respond(false, { error: message });
-      }
+    registerOrchestratorOverviewGatewayMethod({
+      api,
+      io: {
+        readJsonOrDefault,
+      },
+      paths: {
+        dashboardJson: paths.dashboardJson,
+        systemHealthJson: paths.systemHealthJson,
+      },
     });
 
     api.logger.info(
