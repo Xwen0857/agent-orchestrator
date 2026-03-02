@@ -1,4 +1,4 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingMessage } from "node:http";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -26,12 +26,8 @@ import {
   type OrchestrateSessionState,
 } from "./orchestrate-session.js";
 import { type PathState } from "./orchestrate-path.js";
-import { handlePathSubcommand } from "./orchestrate-path-command.js";
-import { handleRunSubcommand } from "./orchestrate-run-command.js";
-import { handleStatusSubcommand } from "./orchestrate-status-command.js";
-import { handleKbSyncSubcommand } from "./orchestrate-kb-sync-command.js";
-import { handleIntakeSubcommand } from "./orchestrate-intake-command.js";
-import { handleAmendSubcommand } from "./orchestrate-amend-command.js";
+import { registerOrchestratorHttpRoutes } from "./orchestrate-http.js";
+import { createOrchestrateCommandHandlers } from "./orchestrate-command-deps.js";
 import {
   readOrchestrateSessionStore,
   readPathStateStore,
@@ -589,75 +585,6 @@ function inferRisk(
   return "LOW";
 }
 
-async function parseJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  const raw = Buffer.concat(chunks).toString("utf8").trim();
-  if (!raw) {
-    return {};
-  }
-  const parsed = JSON.parse(raw) as unknown;
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return {};
-  }
-  return parsed as Record<string, unknown>;
-}
-
-function sendJson(res: ServerResponse, statusCode: number, payload: unknown): void {
-  res.statusCode = statusCode;
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.end(`${JSON.stringify(payload)}\n`);
-}
-
-function sendHtml(res: ServerResponse, statusCode: number, html: string): void {
-  res.statusCode = statusCode;
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.end(html);
-}
-
-function getBearerToken(req: IncomingMessage): string | null {
-  const auth = String(req.headers.authorization ?? "");
-  if (!auth.toLowerCase().startsWith("bearer ")) {
-    return null;
-  }
-  const token = auth.slice(7).trim();
-  return token || null;
-}
-
-function isAuthorized(
-  req: IncomingMessage,
-  api: OpenClawPluginApi,
-  cfg: DashboardPluginConfig,
-): boolean {
-  if (!cfg.requireGatewayAuth) {
-    return true;
-  }
-
-  const requestToken = getBearerToken(req);
-  if (!requestToken) {
-    return false;
-  }
-
-  const configured = [
-    api.config.gateway?.auth?.token,
-    api.config.gateway?.auth?.password,
-    process.env.OPENCLAW_GATEWAY_TOKEN,
-    process.env.CLAWDBOT_GATEWAY_TOKEN,
-    process.env.OPENCLAW_GATEWAY_PASSWORD,
-    process.env.CLAWDBOT_GATEWAY_PASSWORD,
-  ]
-    .filter((value): value is string => typeof value === "string")
-    .map((value) => value.trim())
-    .filter(Boolean);
-
-  if (configured.length === 0) {
-    return true;
-  }
-  return configured.includes(requestToken);
-}
-
 async function runScript(
   scriptPath: string,
   args: string[],
@@ -672,126 +599,6 @@ async function runScript(
     stdout: res.stdout.trim(),
     stderr: res.stderr.trim(),
   };
-}
-
-function renderDashboardHtml(params: { apiBasePath: string; title: string }): string {
-  const { apiBasePath, title } = params;
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${title}</title>
-  <style>
-    :root { --bg:#f2f5ee; --ink:#102313; --muted:#4b6351; --card:#fff; --line:#cddbcf; --accent:#1f7a4f; --warn:#8a3f1e; }
-    body { margin:0; font-family: ui-sans-serif, -apple-system, Segoe UI, sans-serif; color:var(--ink); background: radial-gradient(circle at 20% 10%, #dfebdf, var(--bg)); }
-    .top { position:sticky; top:0; background:rgba(255,255,255,0.9); border-bottom:1px solid var(--line); padding:12px 18px; display:flex; align-items:center; justify-content:space-between; }
-    .top h1 { margin:0; font-size:18px; }
-    .layout { padding:16px; display:grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap:14px; }
-    .card { background:var(--card); border:1px solid var(--line); box-shadow:0 6px 12px rgba(0,0,0,0.06); padding:12px; }
-    .card h2 { margin:0 0 8px; font-size:16px; }
-    pre { margin:0; max-height:360px; overflow:auto; background:#f8fbf7; border:1px solid var(--line); padding:10px; }
-    textarea { width:100%; min-height:320px; font-family: ui-monospace, SFMono-Regular, monospace; border:1px solid var(--line); }
-    .row { display:flex; gap:8px; flex-wrap:wrap; }
-    button { border:1px solid var(--accent); background:var(--accent); color:#fff; padding:8px 10px; cursor:pointer; }
-    .banner { margin:12px 18px 0; padding:8px 10px; border:1px solid #f0cf92; background:#fff8ea; color:var(--warn); }
-  </style>
-</head>
-<body>
-  <header class="top">
-    <h1>${title}</h1>
-    <div class="row">
-      <button id="btnRefresh">Refresh</button>
-      <button id="btnValidate">Validate Draft</button>
-      <button id="btnCommit">Commit Draft</button>
-    </div>
-  </header>
-  <div id="msg" class="banner" style="display:none"></div>
-  <main class="layout">
-    <section class="card"><h2>Overview</h2><pre id="overview">loading...</pre></section>
-    <section class="card"><h2>Events</h2><pre id="events">loading...</pre></section>
-    <section class="card" style="grid-column:1/-1"><h2>Config Draft</h2><textarea id="draft"></textarea></section>
-  </main>
-  <script>
-    const API_BASE = ${JSON.stringify(apiBasePath)};
-    const msg = document.getElementById('msg');
-    const overviewEl = document.getElementById('overview');
-    const eventsEl = document.getElementById('events');
-    const draftEl = document.getElementById('draft');
-
-    function getAuthToken() {
-      return localStorage.getItem('openclaw_gateway_token') || '';
-    }
-
-    async function request(path, init = {}) {
-      const token = getAuthToken();
-      const headers = { ...(init.headers || {}) };
-      if (token) headers.Authorization = 'Bearer ' + token;
-      if (!headers['Content-Type'] && init.body) headers['Content-Type'] = 'application/json';
-      const res = await fetch(API_BASE + path, { ...init, headers });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || ('HTTP ' + res.status));
-      }
-      return res.json();
-    }
-
-    function showMsg(text) {
-      msg.style.display = '';
-      msg.textContent = text;
-      setTimeout(() => { msg.style.display = 'none'; }, 4500);
-    }
-
-    async function refresh() {
-      try {
-        const [overview, cfg, events] = await Promise.all([
-          request('/overview'),
-          request('/configs/current'),
-          request('/events?limit=100')
-        ]);
-        overviewEl.textContent = JSON.stringify(overview, null, 2);
-        draftEl.value = JSON.stringify(cfg, null, 2);
-        eventsEl.textContent = JSON.stringify(events, null, 2);
-      } catch (err) {
-        showMsg(String(err));
-      }
-    }
-
-    document.getElementById('btnRefresh').addEventListener('click', refresh);
-    document.getElementById('btnValidate').addEventListener('click', async () => {
-      try {
-        const draft = JSON.parse(draftEl.value || '{}');
-        const res = await request('/configs/validate', {
-          method: 'POST',
-          body: JSON.stringify({ draft, reason: 'validate from plugin ui' })
-        });
-        showMsg('validate=' + res.valid + ', risk=' + res.riskLevel + ', approval=' + res.requiresApproval);
-      } catch (err) {
-        showMsg(String(err));
-      }
-    });
-    document.getElementById('btnCommit').addEventListener('click', async () => {
-      try {
-        const draft = JSON.parse(draftEl.value || '{}');
-        const res = await request('/configs/commit', {
-          method: 'POST',
-          body: JSON.stringify({ draft, reason: 'commit from plugin ui' })
-        });
-        showMsg('commit ok snapshot=' + res.snapshotVersion);
-        await refresh();
-      } catch (err) {
-        showMsg(String(err));
-      }
-    });
-
-    if (!getAuthToken()) {
-      const token = prompt('Enter OpenClaw gateway token/password (optional if auth disabled):');
-      if (token) localStorage.setItem('openclaw_gateway_token', token.trim());
-    }
-    refresh();
-  </script>
-</body>
-</html>`;
 }
 
 const orchestratorDashboardPlugin = {
@@ -1738,6 +1545,55 @@ const orchestratorDashboardPlugin = {
       };
     };
 
+    const commandHandlers = createOrchestrateCommandHandlers({
+      repoRoot,
+      basePath,
+      cfg: {
+        runnerEnabled: cfg.runnerEnabled,
+        runnerFallbackEnabled: cfg.runnerFallbackEnabled,
+      },
+      runnerTimerActive: Boolean(runnerTimer),
+      paths: {
+        orchestrateRequestsDir: paths.orchestrateRequestsDir,
+        taskFoldersRoot: paths.taskFoldersRoot,
+        dashboardJson: paths.dashboardJson,
+        systemHealthJson: paths.systemHealthJson,
+        executionRuntime: paths.executionRuntime,
+      },
+      readOrchestrateSession,
+      writeOrchestrateSession,
+      readPathState,
+      writePathState,
+      io: {
+        fileExists,
+        readJsonOrDefault,
+        writeJsonAtomic,
+        readNdjson,
+        readText,
+        writeTextAtomic,
+      },
+      runtime: {
+        getRunnerLockMtime,
+        loadExecutionRuntime,
+        getExternalRunnerStatus,
+        ensureRunnerStarted,
+        runnerStatus,
+        runnerLastTickAt,
+        runnerLastTickResult,
+        runnerLastTickError,
+        runnerIntervalSec,
+        runnerExecutionMode,
+        runnerBatchSize,
+        runnerMaxParallel,
+      },
+      runWhitelistedScript,
+      emitEvent,
+      buildWorkerIdFromTaskId,
+      trimOutput,
+      renderRequiredConfigChecklist,
+      renderOrchestrateHelp,
+    });
+
     const validateDraft = async (draftInput: unknown) => {
       const draft =
         draftInput && typeof draftInput === "object" && !Array.isArray(draftInput)
@@ -2063,146 +1919,45 @@ const orchestratorDashboardPlugin = {
         }
 
         if (parsed.subcommand === "path") {
-          const runtimeStats = await loadExecutionRuntime();
           return {
-            text: await handlePathSubcommand({
-              payload: parsed.payload,
-              senderId: ctx.senderId,
-              repoRoot,
-              projectsRoot: runtimeStats.projectsRoot,
-              readPathState,
-              writePathState,
-            }),
+            text: await commandHandlers.handlePath(parsed.payload, ctx.senderId),
           };
         }
 
         if (parsed.subcommand === "status") {
           return {
-            text: await handleStatusSubcommand({
-              payload: parsed.payload,
-              cfg: {
-                runnerEnabled: cfg.runnerEnabled,
-                runnerFallbackEnabled: cfg.runnerFallbackEnabled,
-              },
-              runnerTimerActive: Boolean(runnerTimer),
-              ensureRunnerStarted,
-              paths: {
-                dashboardJson: paths.dashboardJson,
-                systemHealthJson: paths.systemHealthJson,
-                taskFoldersRoot: paths.taskFoldersRoot,
-              },
-              io: {
-                fileExists,
-                readJsonOrDefault,
-                readNdjson,
-                readText,
-              },
-              runtime: {
-                getRunnerLockMtime,
-                loadExecutionRuntime,
-                getExternalRunnerStatus,
-                runnerStatus,
-                runnerLastTickAt,
-                runnerLastTickResult,
-                runnerLastTickError,
-                runnerIntervalSec,
-                runnerExecutionMode,
-                runnerBatchSize,
-                runnerMaxParallel,
-                runtimeConsistency: consistencyInfo?.runtimeConsistency || runtimeConsistency,
-                runtimeSignature,
-                runtimeExpectedSignature: runtimeSignatureExpected,
-              },
-              renderOrchestrateHelp,
+            text: await commandHandlers.handleStatus(parsed.payload, {
+              runtimeConsistency: consistencyInfo?.runtimeConsistency || runtimeConsistency,
+              runtimeSignature,
+              runtimeExpectedSignature: runtimeSignatureExpected,
             }),
           };
         }
 
         if (parsed.subcommand === "kb-sync") {
           return {
-            text: await handleKbSyncSubcommand({
-              payload: parsed.payload,
-              repoRoot,
-              paths: {
-                taskFoldersRoot: paths.taskFoldersRoot,
-                executionRuntime: paths.executionRuntime,
-              },
-              io: {
-                fileExists,
-                readJsonOrDefault,
-                writeJsonAtomic,
-              },
-              runWhitelistedScript,
-              emitEvent,
-            }),
+            text: await commandHandlers.handleKbSync(parsed.payload),
           };
         }
 
         if (parsed.subcommand === "intake") {
           return {
-            text: await handleIntakeSubcommand({
-              payload: parsed.payload,
-              ctx,
-              readOrchestrateSession,
-              writeOrchestrateSession,
-              emitEvent,
-              renderOrchestrateHelp,
-            }),
+            text: await commandHandlers.handleIntake(parsed.payload, ctx),
           };
         }
 
         if (parsed.subcommand === "amend") {
           return {
-            text: await handleAmendSubcommand({
-              payload: parsed.payload,
-              repoRoot,
-              taskFoldersRoot: paths.taskFoldersRoot,
-              io: {
-                fileExists,
-                readText,
-                writeTextAtomic,
-              },
-              runWhitelistedScript,
-              emitEvent,
-            }),
+            text: await commandHandlers.handleAmend(parsed.payload),
           };
         }
 
         if (parsed.subcommand === "run") {
           return {
-            text: await handleRunSubcommand({
-              payload: parsed.payload,
-              ctx,
-              repoRoot,
-              basePath,
-              paths: {
-                orchestrateRequestsDir: paths.orchestrateRequestsDir,
-                taskFoldersRoot: paths.taskFoldersRoot,
-              },
-              readOrchestrateSession,
-              writeOrchestrateSession,
-              readPathState,
-              readJsonOrDefault,
-              writeJsonAtomic,
-              runWhitelistedScript,
-              emitEvent,
-              buildWorkerIdFromTaskId,
-              trimOutput,
-              loadExecutionRuntime,
-              ensureRunnerStarted,
-              getExternalRunnerStatus,
-              runtime: {
-                runnerExecutionMode,
-                runnerBatchSize,
-                runnerMaxParallel,
-                runnerLastTickResult,
-                runnerLastTickError,
-                runtimeConsistency: consistencyInfo?.runtimeConsistency || runtimeConsistency,
-                runtimeSignature,
-                runtimeExpectedSignature: runtimeSignatureExpected,
-                runnerFallbackEnabled: cfg.runnerFallbackEnabled,
-              },
-              renderRequiredConfigChecklist,
+            text: await commandHandlers.handleRun(parsed.payload, ctx, {
+              runtimeConsistency: consistencyInfo?.runtimeConsistency || runtimeConsistency,
+              runtimeSignature,
+              runtimeExpectedSignature: runtimeSignatureExpected,
             }),
           };
         }
@@ -2211,230 +1966,44 @@ const orchestratorDashboardPlugin = {
       },
     });
 
-    api.registerHttpRoute({
-      path: basePath,
-      handler: async (_req, res) => {
-        sendHtml(
-          res,
-          200,
-          renderDashboardHtml({
-            apiBasePath,
-            title: "OpenClaw Orchestrator Dashboard",
-          }),
-        );
+    registerOrchestratorHttpRoutes({
+      api,
+      cfg,
+      basePath,
+      apiBasePath,
+      repoRoot,
+      paths,
+      io: {
+        fileExists,
+        readJsonOrDefault,
+        readText,
+        writeTextAtomic,
+        writeJsonAtomic,
+        readNdjson,
       },
-    });
-
-    api.registerHttpRoute({
-      path: `${basePath}/`,
-      handler: async (_req, res) => {
-        sendHtml(
-          res,
-          200,
-          renderDashboardHtml({
-            apiBasePath,
-            title: "OpenClaw Orchestrator Dashboard",
-          }),
-        );
+      pathsByName: {
+        dashboardJson: paths.dashboardJson,
+        systemHealthJson: paths.systemHealthJson,
+        plannerCurrent: paths.plannerCurrent,
+        plannerProperties: paths.plannerProperties,
+        auditPolicy: paths.auditPolicy,
+        auditHistory: paths.history,
+        snapshotScript: paths.snapshotScript,
+        rollbackScript: paths.rollbackScript,
       },
-    });
-
-    api.registerHttpHandler(async (req, res) => {
-      const url = new URL(req.url ?? "/", "http://localhost");
-      if (!url.pathname.startsWith(apiBasePath)) {
-        return false;
-      }
-
-      if (!isAuthorized(req, api, cfg)) {
-        sendJson(res, 401, { error: "Unauthorized" });
-        return true;
-      }
-
-      const subPath = url.pathname.slice(apiBasePath.length) || "/";
-
-      try {
-        if (req.method === "GET" && subPath === "/overview") {
-          const [dashboard, systemHealth] = await Promise.all([
-            readJsonOrDefault(paths.dashboardJson, {}),
-            readJsonOrDefault(paths.systemHealthJson, {}),
-          ]);
-          sendJson(res, 200, {
-            pluginId: "orchestrator-dashboard",
-            generatedAt: new Date().toISOString(),
-            dashboard,
-            systemHealth,
-          });
-          return true;
-        }
-
-        if (req.method === "GET" && subPath === "/configs/current") {
-          sendJson(res, 200, await loadCurrentConfig());
-          return true;
-        }
-
-        if (req.method === "POST" && subPath === "/configs/validate") {
-          const body = await parseJsonBody(req);
-          const draft = body.draft;
-          const result = await validateDraft(draft);
-          await emitEvent("config.draft.validated", result, req);
-          sendJson(res, 200, result);
-          return true;
-        }
-
-        if (req.method === "POST" && subPath === "/configs/commit") {
-          const lockOk = await acquireLock();
-          if (!lockOk) {
-            sendJson(res, 409, { error: "config transaction in progress" });
-            return true;
-          }
-
-          try {
-            const body = await parseJsonBody(req);
-            const draft =
-              body.draft && typeof body.draft === "object" && !Array.isArray(body.draft)
-                ? (body.draft as Record<string, unknown>)
-                : {};
-            const reason =
-              typeof body.reason === "string" ? body.reason.trim() : "commit from openclaw plugin";
-            const approvalId = typeof body.approvalId === "string" ? body.approvalId.trim() : "";
-
-            const validation = await validateDraft(draft);
-            if (!validation.valid) {
-              sendJson(res, 400, { error: "draft validation failed", validation });
-              return true;
-            }
-            if (validation.requiresApproval && !approvalId) {
-              sendJson(res, 403, { error: "approvalId required for HIGH/CRITICAL changes" });
-              return true;
-            }
-
-            const plannerCurrent =
-              draft.plannerCurrent &&
-              typeof draft.plannerCurrent === "object" &&
-              !Array.isArray(draft.plannerCurrent)
-                ? (draft.plannerCurrent as Record<string, unknown>)
-                : {};
-            const plannerProperties =
-              draft.plannerProperties &&
-              typeof draft.plannerProperties === "object" &&
-              !Array.isArray(draft.plannerProperties)
-                ? (draft.plannerProperties as Record<string, unknown>)
-                : {};
-            const auditPolicy =
-              draft.auditPolicy &&
-              typeof draft.auditPolicy === "object" &&
-              !Array.isArray(draft.auditPolicy)
-                ? (draft.auditPolicy as Record<string, unknown>)
-                : {};
-
-            const [currentRaw, propsRaw] = await Promise.all([
-              readText(paths.plannerCurrent),
-              readText(paths.plannerProperties),
-            ]);
-            await writeTextAtomic(
-              paths.plannerCurrent,
-              updatePlainKvText(currentRaw, plannerCurrent),
-            );
-            await writeTextAtomic(
-              paths.plannerProperties,
-              updateListKvText(propsRaw, plannerProperties),
-            );
-            await writeJsonAtomic(paths.auditPolicy, auditPolicy);
-
-            const snapshotVersion = `openclaw-orch-${new Date()
-              .toISOString()
-              .replace(/[-:TZ.]/g, "")
-              .slice(0, 14)}-${randomUUID().slice(0, 6)}`;
-
-            let snapshotOut = "";
-            if (await fileExists(paths.snapshotScript)) {
-              const scriptRes = await runScript(
-                paths.snapshotScript,
-                [snapshotVersion, "openclaw", reason],
-                repoRoot,
-              );
-              snapshotOut = scriptRes.stdout || scriptRes.stderr;
-            }
-
-            const payload = {
-              committed: true,
-              snapshotVersion,
-              riskLevel: validation.riskLevel,
-              changedKeys: validation.changedKeys,
-              approvalId,
-              scriptOutput: snapshotOut,
-            };
-            await emitEvent("config.committed", payload, req);
-            sendJson(res, 200, payload);
-            return true;
-          } finally {
-            await releaseLock();
-          }
-        }
-
-        if (req.method === "POST" && subPath === "/configs/rollback") {
-          const body = await parseJsonBody(req);
-          const targetVersionId =
-            typeof body.targetVersionId === "string" ? body.targetVersionId.trim() : "";
-          const reason =
-            typeof body.reason === "string" ? body.reason.trim() : "rollback from openclaw plugin";
-
-          if (!targetVersionId) {
-            sendJson(res, 400, { error: "targetVersionId is required" });
-            return true;
-          }
-          if (!(await fileExists(paths.rollbackScript))) {
-            sendJson(res, 500, { error: "rollback script not found", path: paths.rollbackScript });
-            return true;
-          }
-
-          const rollbackRes = await runScript(
-            paths.rollbackScript,
-            [targetVersionId, "openclaw", reason],
-            repoRoot,
-          );
-          const payload = {
-            rolledBack: true,
-            targetVersionId,
-            output: rollbackRes.stdout || rollbackRes.stderr,
-          };
-          await emitEvent("config.rollback.executed", payload, req);
-          sendJson(res, 200, payload);
-          return true;
-        }
-
-        if (req.method === "GET" && subPath === "/configs/history") {
-          sendJson(res, 200, { items: await readNdjson(paths.history) });
-          return true;
-        }
-
-        if (req.method === "GET" && subPath === "/events") {
-          const limitRaw = Number.parseInt(url.searchParams.get("limit") || "200", 10);
-          const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(1000, limitRaw)) : 200;
-          const rows = await readNdjson(eventsPath);
-          sendJson(res, 200, { items: rows.slice(-limit) });
-          return true;
-        }
-
-        if (req.method === "GET" && subPath === "/meta") {
-          sendJson(res, 200, {
-            pluginId: "orchestrator-dashboard",
-            basePath,
-            apiBasePath,
-            repoRoot,
-            paths,
-          });
-          return true;
-        }
-
-        sendJson(res, 404, { error: "not found", path: subPath });
-        return true;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        await emitEvent("runtime.error", { error: message, path: subPath }, req);
-        sendJson(res, 500, { error: message });
-        return true;
-      }
+      runtime: {
+        eventsPath,
+      },
+      helpers: {
+        loadCurrentConfig,
+        validateDraft,
+        acquireLock,
+        releaseLock,
+        emitEvent,
+        runScript,
+        updatePlainKvText,
+        updateListKvText,
+      },
     });
 
     api.registerGatewayMethod("orchestrator.overview", async ({ respond }) => {
