@@ -9,9 +9,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
-  buildOperationId,
-  buildStrategyFromSummary,
-  buildTaskId,
   normalizeFreeTextToStrategy,
   runWhitelistedScript,
 } from "./orchestrate-command.js";
@@ -20,32 +17,18 @@ import {
   appendSessionHistory,
   buildEntryAgentContext,
   buildEmptyOrchestrateSession,
-  buildSessionFilePath,
   buildSummaryFromDraft,
   buildSummaryFilePath,
   extractLatestUserMessage,
-  getRunnableSummary,
-  normalizeOrchestrateSession,
   parseOrchestrateArgs,
   renderSessionSummary,
   resolveConversationSessionKey,
-  validateRunCommandPayload,
   type OrchestrateSessionState,
 } from "./orchestrate-session.js";
-import {
-  resolveWorkspaceConfigForRun,
-  type PathState,
-  type WorkspaceConfigSource,
-} from "./orchestrate-path.js";
+import { type PathState } from "./orchestrate-path.js";
 import { handlePathSubcommand } from "./orchestrate-path-command.js";
-import {
-  renderRunSuccessResponse,
-  renderTaskStatusResponse,
-} from "./orchestrate-response.js";
-import {
-  buildRunSuccessResponseParams,
-  buildTaskStatusResponseParams,
-} from "./orchestrate-view-model.js";
+import { handleRunSubcommand } from "./orchestrate-run-command.js";
+import { handleStatusSubcommand } from "./orchestrate-status-command.js";
 import {
   readOrchestrateSessionStore,
   readPathStateStore,
@@ -2091,137 +2074,44 @@ const orchestratorDashboardPlugin = {
         }
 
         if (parsed.subcommand === "status") {
-          // Self-heal: if runner timer wasn't started for any reason, try to start it on status reads.
-          if (cfg.runnerEnabled && !runnerTimer) {
-            try {
-              await ensureRunnerStarted();
-            } catch {
-              // keep status query non-fatal
-            }
-          }
-          const taskId = parsed.payload.trim();
-          if (!taskId) {
-            const [dashboard, health, lockMtime, runtimeStats, externalRunner] = await Promise.all([
-              readJsonOrDefault<Record<string, unknown>>(paths.dashboardJson, {}),
-              readJsonOrDefault<Record<string, unknown>>(paths.systemHealthJson, {}),
-              getRunnerLockMtime(),
-              loadExecutionRuntime(),
-              getExternalRunnerStatus(),
-            ]);
-            const active = Array.isArray(dashboard.active_pipelines)
-              ? dashboard.active_pipelines
-              : [];
-            const top = active.slice(0, 5).map((item) => {
-              const task = String((item as Record<string, unknown>).task_id ?? "unknown");
-              const state = String((item as Record<string, unknown>).state ?? "UNKNOWN");
-              const owner = String((item as Record<string, unknown>).owner ?? "n/a");
-              return `- ${task} ${state} owner=${owner}`;
-            });
-            return {
-              text: [
-                `active_tasks: ${String(active.length)}`,
-                `system_status: ${String((health as Record<string, unknown>).status ?? "UNKNOWN")}`,
-                `scheduler_status: ${runnerStatus}`,
-                `last_tick_at: ${runnerLastTickAt || "(none)"}`,
-                `last_tick_result: ${runnerLastTickResult}${runnerLastTickError ? ` (${runnerLastTickError})` : ""}`,
-                `runner_interval_sec: ${String(runnerIntervalSec)}`,
-                `runner_execution_mode: ${runnerExecutionMode}`,
-                `runner_batch_size: ${String(runnerBatchSize)}`,
-                `runner_max_parallel: ${String(runnerMaxParallel)}`,
-                `logical_threads: ${String(runtimeStats.logicalThreads)}`,
-                `effective_worker_threads: ${String(runtimeStats.effectiveWorkerThreads)}`,
-                `parallel_limit: ${String(runtimeStats.parallelLimit)}`,
-                `queue_depth: ${String(runtimeStats.queueDepth)}`,
-                `policy_mode: ${runtimeStats.policyMode}`,
-                `role_policy_path: ${runtimeStats.rolePolicyPath}`,
-                `workspace_root: ${runtimeStats.workdomainRoot}`,
-                `projects_root: ${runtimeStats.projectsRoot}`,
-                `sandbox_status: ${runtimeStats.sandboxEnabled ? "enabled" : "disabled"}`,
-                `commit_guard_status: ${runtimeStats.commitGuardEnabled ? "enabled" : "disabled"}`,
-                `kb_import_confirm_required: ${runtimeStats.kbImportConfirmRequired ? "true" : "false"}`,
-                `kb_import_auto_enabled: ${runtimeStats.kbImportAutoEnabled ? "true" : "false"}`,
-                `workspace_sync_sensitivity: ${runtimeStats.workspaceSyncSensitivity}`,
-                `skill_mcp_isolation_enabled: ${runtimeStats.skillMcpIsolationEnabled ? "true" : "false"}`,
-                `protect_orchestrator_config: ${runtimeStats.protectOrchestratorConfig ? "true" : "false"}`,
-                `project_runtime_profile: ${runtimeStats.projectRuntimeProfile}`,
-                `orchestrator_runtime_profile: ${runtimeStats.orchestratorRuntimeProfile}`,
-                `acl_denied_count: ${String(runtimeStats.aclDeniedCount)}`,
-                `acl_last_denied_at: ${runtimeStats.aclLastDeniedAt || "(none)"}`,
-                `runner_lock_mtime: ${lockMtime || "(none)"}`,
-                `runtime_consistency: ${consistencyInfo?.runtimeConsistency || runtimeConsistency}`,
-                `runtime_signature: ${runtimeSignature || "(none)"}`,
-                `runtime_expected_signature: ${runtimeSignatureExpected || "(none)"}`,
-                `external_runner_running: ${externalRunner.running ? "true" : "false"}`,
-                `external_runner_pid: ${externalRunner.pid > 0 ? String(externalRunner.pid) : "(none)"}`,
-                `external_runner_last_tick_at: ${externalRunner.lastTickAt || "(none)"}`,
-                `external_runner_last_exit_code: ${externalRunner.lastExitCode || "(none)"}`,
-                runnerStatus === "degraded" && cfg.runnerFallbackEnabled
-                  ? "runner_fallback_hint: bash agent-orchestrator/scripts/orchestrate_runner_daemon.sh start 10"
-                  : "runner_fallback_hint: (none)",
-                top.length > 0 ? "top_active:" : "top_active: (none)",
-                ...top,
-              ].join("\n"),
-            };
-          }
-          if (!taskId || !/^[A-Za-z0-9._-]+$/u.test(taskId)) {
-            return { text: `invalid task_id\n\n${renderOrchestrateHelp()}` };
-          }
-          const taskDir = path.join(paths.taskFoldersRoot, taskId);
-          const metaPath = path.join(taskDir, "meta.json");
-          const logPath = path.join(taskDir, "log.ndjson");
-          const amendmentsPath = path.join(taskDir, "amendments.md");
-          if (!(await fileExists(metaPath))) {
-            return { text: `task not found: ${taskId}` };
-          }
-          const meta = await readJsonOrDefault<Record<string, unknown>>(metaPath, {});
-          const events = await readNdjson(logPath);
-          let amendmentCount = 0;
-          let lastAmendment = "";
-          if (await fileExists(amendmentsPath)) {
-            const raw = await readText(amendmentsPath);
-            const lines = raw
-              .split(/\r?\n/)
-              .map((line) => line.trim())
-              .filter((line) => line.startsWith("- "));
-            amendmentCount = lines.length;
-            lastAmendment = (lines[lines.length - 1] ?? "").replace(/^- /u, "");
-          }
-          const recent = events.slice(-3).map((entry) => {
-            const action = String(entry.action ?? "UNKNOWN");
-            const afterState = String(entry.after_state ?? "");
-            const timestamp = String(entry.timestamp ?? "");
-            return `${timestamp} ${action} ${afterState}`.trim();
-          });
-          const [lockMtime, runtimeStats, externalRunner] = await Promise.all([
-            getRunnerLockMtime(),
-            loadExecutionRuntime(),
-            getExternalRunnerStatus(),
-          ]);
           return {
-            text: renderTaskStatusResponse(
-              buildTaskStatusResponseParams({
-              taskId,
-              meta,
-              runnerStatus,
-              runnerLastTickAt,
-              runnerLastTickResult,
-              runnerLastTickError,
-              runnerIntervalSec,
-              runnerExecutionMode,
-              runnerBatchSize,
-              runnerMaxParallel,
-              runtimeStats,
-              lockMtime,
-              runtimeConsistency: consistencyInfo?.runtimeConsistency || runtimeConsistency,
-              runtimeSignature,
-              runtimeExpectedSignature: runtimeSignatureExpected,
-              externalRunner,
-              runnerFallbackEnabled: cfg.runnerFallbackEnabled,
-              amendmentCount,
-              lastAmendment,
-              recent,
-              }),
-            ),
+            text: await handleStatusSubcommand({
+              payload: parsed.payload,
+              cfg: {
+                runnerEnabled: cfg.runnerEnabled,
+                runnerFallbackEnabled: cfg.runnerFallbackEnabled,
+              },
+              runnerTimerActive: Boolean(runnerTimer),
+              ensureRunnerStarted,
+              paths: {
+                dashboardJson: paths.dashboardJson,
+                systemHealthJson: paths.systemHealthJson,
+                taskFoldersRoot: paths.taskFoldersRoot,
+              },
+              io: {
+                fileExists,
+                readJsonOrDefault,
+                readNdjson,
+                readText,
+              },
+              runtime: {
+                getRunnerLockMtime,
+                loadExecutionRuntime,
+                getExternalRunnerStatus,
+                runnerStatus,
+                runnerLastTickAt,
+                runnerLastTickResult,
+                runnerLastTickError,
+                runnerIntervalSec,
+                runnerExecutionMode,
+                runnerBatchSize,
+                runnerMaxParallel,
+                runtimeConsistency: consistencyInfo?.runtimeConsistency || runtimeConsistency,
+                runtimeSignature,
+                runtimeExpectedSignature: runtimeSignatureExpected,
+              },
+              renderOrchestrateHelp,
+            }),
           };
         }
 
@@ -2489,375 +2379,42 @@ const orchestratorDashboardPlugin = {
         }
 
         if (parsed.subcommand === "run") {
-          const runPayloadError = validateRunCommandPayload(parsed.payload);
-          if (runPayloadError) {
-            return { text: runPayloadError };
-          }
-          const sessionKeyForRun = resolveConversationSessionKey(ctx);
-          if (!sessionKeyForRun) {
-            return { text: "orchestrate run failed: missing session key" };
-          }
-          const session = await readOrchestrateSession(sessionKeyForRun);
-          const runnableSummary = getRunnableSummary(session);
-          if (!runnableSummary.ok) {
-            return { text: runnableSummary.error };
-          }
-          const activeSession = session as OrchestrateSessionState;
-          const latestSummary = runnableSummary.summary;
-
-          const requestedMode = latestSummary.content.requested_mode;
-          const taskId = buildTaskId(latestSummary.content.task_goal);
-
-          const runtimeStatsForWorkspace = await loadExecutionRuntime();
-          let workspaceResolved: {
-            projectId: string;
-            workspaceRoot: string;
-            source: WorkspaceConfigSource;
-            validated: boolean;
-          };
-          try {
-            workspaceResolved = resolveWorkspaceConfigForRun({
+          return {
+            text: await handleRunSubcommand({
+              payload: parsed.payload,
+              ctx,
               repoRoot,
-              projectsRootRel: runtimeStatsForWorkspace.projectsRoot,
-              pathState: await readPathState(),
-              projectIdFromFlag: latestSummary.content.project_id,
-              workspaceRootFromFlag: latestSummary.content.workspace_root,
-              taskId,
-            });
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            return { text: `orchestrate run failed: ${message}` };
-          }
-
-          const strategyInitial = buildStrategyFromSummary({
-            summary: latestSummary.content,
-            taskId,
-            channel: ctx.channel,
-            senderId: ctx.senderId,
-            sessionKey: sessionKeyForRun,
-            messageThreadId: ctx.messageThreadId,
-            workspace: {
-              project_id: workspaceResolved.projectId,
-              workspace_root: workspaceResolved.workspaceRoot,
-              source: workspaceResolved.source,
-            },
-          });
-
-          const operationId = buildOperationId({
-            subcommand: "run",
-            sessionKey: sessionKeyForRun,
-            messageThreadId: ctx.messageThreadId,
-            request: strategyInitial.raw_request,
-          });
-          const llmPlan = {
-            strategy: strategyInitial,
-            used: false,
-            reason: "session_summary",
-            authMode: "auto" as const,
-            keySource: "",
-          };
-          const strategy = llmPlan.strategy;
-          const strategyPath = path.join(paths.orchestrateRequestsDir, `${taskId}.strategy.json`);
-          await writeJsonAtomic(strategyPath, strategy);
-          const summaryPath = buildSummaryFilePath(
-            paths.orchestrateRequestsDir,
-            sessionKeyForRun,
-            latestSummary.summary_id,
-          );
-          const taskDir = path.join(paths.taskFoldersRoot, taskId);
-          const taskDirArg = path.relative(repoRoot, taskDir);
-          const strategyPathArg = path.relative(repoRoot, strategyPath);
-          const scriptTrace: string[] = [];
-          const singleWorkerId = buildWorkerIdFromTaskId(taskId);
-
-          try {
-            const created = await runWhitelistedScript({
-              repoRoot,
-              scriptName: "create_task_from_strategy",
-              args: [strategyPathArg],
-            });
-            scriptTrace.push(
-              `create_task_from_strategy: ${trimOutput(created.stdout || created.stderr || "ok")}`,
-            );
-
-            const createdMetaPath = path.join(taskDir, "meta.json");
-            const createdMeta = await readJsonOrDefault<Record<string, unknown>>(
-              createdMetaPath,
-              {},
-            );
-            await writeJsonAtomic(createdMetaPath, {
-              ...createdMeta,
-              requested_mode: requestedMode,
-              orchestrate_session_key: sessionKeyForRun,
-              summary_id: latestSummary.summary_id,
-              summary_path: summaryPath,
-              input_source: "session_summary",
-            });
-            await writeJsonAtomic(strategyPath, {
-              ...strategy,
-              status: "drafted",
-              summary_id: latestSummary.summary_id,
-              summary_path: summaryPath,
-              input_source: "session_summary",
-            });
-
-            await writeOrchestrateSession({
-              ...activeSession,
-              status: "RUNNING",
-              updated_at: new Date().toISOString(),
-              latest_summary: {
-                ...latestSummary,
-                status: "consumed",
+              basePath,
+              paths: {
+                orchestrateRequestsDir: paths.orchestrateRequestsDir,
+                taskFoldersRoot: paths.taskFoldersRoot,
               },
-              last_run: {
-                task_id: taskId,
-                started_at: new Date().toISOString(),
-                summary_id: latestSummary.summary_id,
-              },
-            });
-            await emitEvent("orchestrate.session.run_started", {
-              session_key: sessionKeyForRun,
-              summary_id: latestSummary.summary_id,
-              summary_path: summaryPath,
-              task_id: taskId,
-            });
-
-            const planned = await runWhitelistedScript({
-              repoRoot,
-              scriptName: "planner_entry",
-              args: ["--task-dir", taskDirArg, "--requested-mode", requestedMode],
-            });
-            scriptTrace.push(
-              `planner_entry: ${trimOutput(planned.stdout || planned.stderr || "ok")}`,
-            );
-
-            const planningActor = "planner-core";
-            const transitions: Array<{ from: string; to: string; reason: string }> = [
-              { from: "CREATED", to: "PLANNED", reason: "orchestrate-run planned" },
-              { from: "PLANNED", to: "ASSIGNED", reason: "orchestrate-run assigned" },
-            ];
-            for (const t of transitions) {
-              const transition = await runWhitelistedScript({
-                repoRoot,
-                scriptName: "transition_task_state",
-                args: [
-                  taskDirArg,
-                  planningActor,
-                  `${operationId}:${t.from.toLowerCase()}-${t.to.toLowerCase()}`,
-                  t.from,
-                  t.to,
-                  t.reason.replace(/\s+/g, "_"),
-                ],
-              });
-              scriptTrace.push(
-                `transition_task_state ${t.from}->${t.to}: ${trimOutput(
-                  transition.stdout || transition.stderr || "ok",
-                )}`,
-              );
-            }
-
-            const dashboard = await runWhitelistedScript({
-              repoRoot,
-              scriptName: "dashboard_summary",
-              args: [],
-            });
-            scriptTrace.push(
-              `dashboard_summary: ${trimOutput(dashboard.stdout || dashboard.stderr || "ok")}`,
-            );
-
-            await writeJsonAtomic(strategyPath, {
-              ...strategy,
-              status: "applied",
-              summary_id: latestSummary.summary_id,
-              summary_path: summaryPath,
-              input_source: "session_summary",
-            });
-            const meta = await readJsonOrDefault<Record<string, unknown>>(
-              path.join(taskDir, "meta.json"),
-              {},
-            );
-            const runnerInfo = await ensureRunnerStarted();
-            const [runtimeStats, externalRunner] = await Promise.all([
-              loadExecutionRuntime(),
-              getExternalRunnerStatus(),
-            ]);
-            const requestedModeResolved = String(meta.requested_mode ?? requestedMode);
-            const planningDecisionMeta =
-              meta.planning_decision &&
-              typeof meta.planning_decision === "object" &&
-              !Array.isArray(meta.planning_decision)
-                ? (meta.planning_decision as Record<string, unknown>)
-                : {};
-            const aggregateMeta =
-              meta.aggregate && typeof meta.aggregate === "object" && !Array.isArray(meta.aggregate)
-                ? (meta.aggregate as Record<string, unknown>)
-                : {};
-            const executionRoles =
-              meta.execution_roles &&
-              typeof meta.execution_roles === "object" &&
-              !Array.isArray(meta.execution_roles)
-                ? (meta.execution_roles as Record<string, unknown>)
-                : {};
-            const payload = {
-              task_id: taskId,
-              orchestrate_session_key: sessionKeyForRun,
-              summary_id: latestSummary.summary_id,
-              summary_path: summaryPath,
-              operation_id: operationId,
-              state: String(meta.state ?? "UNKNOWN"),
-              version: Number(meta.version ?? 0),
-              strategy_path: strategyPath,
-              dashboard_path: basePath,
-              scheduler_status: runnerInfo.schedulerStatus,
-              last_tick_at: runnerInfo.lastTickAt,
-              last_tick_result: runnerLastTickResult,
-              last_tick_error_summary: runnerLastTickError,
-              runner_interval_sec: runnerInfo.intervalSec,
-              runner_execution_mode: runnerExecutionMode,
-              runner_batch_size: runnerBatchSize,
-              runner_max_parallel: runnerMaxParallel,
-              logical_threads: runtimeStats.logicalThreads,
-              effective_worker_threads: runtimeStats.effectiveWorkerThreads,
-              requested_mode: requestedModeResolved,
-              resolved_mode: String(
-                meta.execution_mode ??
-                  (Array.isArray(meta.children) && meta.children.length > 0 ? "multi" : "single"),
-              ),
-              decision_source: String(planningDecisionMeta.decision_source ?? "manual_override"),
-              decision_reason: String(planningDecisionMeta.decision_reason ?? ""),
-              split_units_planned: asPositiveInt(
-                (meta as Record<string, unknown>).split_units_planned,
-                1,
-              ),
-              parallel_limit: runtimeStats.parallelLimit,
-              queue_depth: runtimeStats.queueDepth,
-              policy_mode: runtimeStats.policyMode,
-              role_policy_version: String(meta.role_constraints_version ?? "unknown"),
-              work_domain_id: String(meta.work_domain_id ?? "(none)"),
-              workspace_root: String(meta.workspace_root ?? runtimeStats.workdomainRoot),
-              workspace_config_source: String(
-                meta.workspace_config_source ?? workspaceResolved.source,
-              ),
-              workspace_validated: Boolean(
-                (meta.workspace_validated as boolean | undefined) ?? workspaceResolved.validated,
-              ),
-              planning_actor: String(executionRoles.planning_actor ?? "planner-core"),
-              scheduling_actor: String(executionRoles.scheduling_actor ?? "scheduler-ops"),
-              actor_compat_mode: Boolean(executionRoles.compat_mode ?? false),
-              actor_compat_hits: Number(executionRoles.compat_hits ?? 0),
-              aggregate_publish_status: String(aggregateMeta.publish_status ?? "none"),
-              aggregate_manifest: String(aggregateMeta.manifest_path ?? ""),
-              aggregate_audit_status: String(
-                (meta as Record<string, unknown>).aggregate_audit_status ??
-                  ((aggregateMeta.publish_status === "audited_pass" ||
-                    aggregateMeta.publish_status === "published")
-                    ? "PASS"
-                    : (aggregateMeta.publish_status === "audited_fail" ||
-                        aggregateMeta.publish_status === "rolled_back")
-                      ? "FAIL"
-                      : ""),
-              ),
-              aggregate_collisions_count: Number(
-                (meta as Record<string, unknown>).aggregate_collisions_count ?? 0,
-              ),
-              aggregate_last_block_reason: String(aggregateMeta.last_block_reason ?? ""),
-              acl_denied_count: Number(
-                (meta.acl as Record<string, unknown> | undefined)?.denied_count ??
-                  runtimeStats.aclDeniedCount,
-              ),
-              acl_last_denied_at: String(
-                (meta.acl as Record<string, unknown> | undefined)?.last_denied_at ??
-                  runtimeStats.aclLastDeniedAt,
-              ),
-              sandbox_status: runtimeStats.sandboxEnabled ? "enabled" : "disabled",
-              commit_guard_status: runtimeStats.commitGuardEnabled ? "enabled" : "disabled",
-              kb_import_confirm_required: runtimeStats.kbImportConfirmRequired,
-              kb_import_auto_enabled: runtimeStats.kbImportAutoEnabled,
-              workspace_sync_sensitivity: runtimeStats.workspaceSyncSensitivity,
-              skill_mcp_isolation_enabled: runtimeStats.skillMcpIsolationEnabled,
-              protect_orchestrator_config: runtimeStats.protectOrchestratorConfig,
-              project_runtime_profile: runtimeStats.projectRuntimeProfile,
-              orchestrator_runtime_profile: runtimeStats.orchestratorRuntimeProfile,
-              workspace_user_change_seq: Number(meta.workspace_user_change_seq ?? 0),
-              workspace_last_synced_seq: Number(meta.workspace_last_synced_seq ?? 0),
-              project_id: String(meta.project_id ?? "prj_default"),
-              run_root: String(meta.run_root ?? "(none)"),
-              runtime_consistency: consistencyInfo?.runtimeConsistency || runtimeConsistency,
-              runtime_signature: runtimeSignature || "",
-              runtime_expected_signature: runtimeSignatureExpected || "",
-              external_runner_running: externalRunner.running,
-              external_runner_pid: externalRunner.pid,
-              external_runner_last_tick_at: externalRunner.lastTickAt,
-              external_runner_last_exit_code: externalRunner.lastExitCode,
-              llm_used: llmPlan.used,
-              llm_reason: llmPlan.reason,
-              llm_auth_mode: llmPlan.authMode,
-              llm_key_source: llmPlan.keySource || "",
-            };
-            await emitEvent("orchestrate.run.applied", payload);
-            if (payload.work_domain_id && payload.work_domain_id !== "(none)") {
-              await emitEvent("orchestrate.workdomain.allocated", {
-                task_id: taskId,
-                work_domain_id: payload.work_domain_id,
-                workspace_root: payload.workspace_root,
-                role_policy_version: payload.role_policy_version,
-              });
-              await emitEvent("orchestrate.workdomain.sync_completed", {
-                task_id: taskId,
-                work_domain_id: payload.work_domain_id,
-                sync_strategy: "copy_on_submit",
-              });
-            }
-
-            return {
-              text: renderRunSuccessResponse(
-                buildRunSuccessResponseParams({
-                taskId,
-                sessionKeyForRun,
-                summaryId: latestSummary.summary_id,
-                summaryPath,
-                payload,
-                singleWorkerId,
-                strategyPath,
-                basePath,
-                runnerStatus: runnerInfo.schedulerStatus,
-                runnerLastTickAt: runnerInfo.lastTickAt,
-                runnerLastTickResult,
-                runnerLastTickError,
-                runnerIntervalSec: runnerInfo.intervalSec,
+              readOrchestrateSession,
+              writeOrchestrateSession,
+              readPathState,
+              readJsonOrDefault,
+              writeJsonAtomic,
+              runWhitelistedScript,
+              emitEvent,
+              buildWorkerIdFromTaskId,
+              trimOutput,
+              loadExecutionRuntime,
+              ensureRunnerStarted,
+              getExternalRunnerStatus,
+              runtime: {
                 runnerExecutionMode,
                 runnerBatchSize,
                 runnerMaxParallel,
-                runtimeStats,
-                requestedModeDefault: requestedModeResolved,
-                meta,
-                workspaceConfigSourceDefault: workspaceResolved.source,
-                workspaceValidatedDefault: workspaceResolved.validated,
+                runnerLastTickResult,
+                runnerLastTickError,
                 runtimeConsistency: consistencyInfo?.runtimeConsistency || runtimeConsistency,
                 runtimeSignature,
                 runtimeExpectedSignature: runtimeSignatureExpected,
-                externalRunner,
                 runnerFallbackEnabled: cfg.runnerFallbackEnabled,
-                checklistText: renderRequiredConfigChecklist(),
-                scriptTrace,
-                llmUsed: llmPlan.used,
-                llmReason: llmPlan.reason,
-                llmAuthMode: llmPlan.authMode,
-                llmKeySource: llmPlan.keySource,
-                }),
-              ),
-            };
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            await emitEvent("orchestrate.run.failed", {
-              task_id: taskId,
-              operation_id: operationId,
-              error: message,
-            });
-            return {
-              text: `orchestrate run failed: ${message}\nstrategy: ${strategyPath}`,
-            };
-          }
+              },
+              renderRequiredConfigChecklist,
+            }),
+          };
         }
 
         return { text: renderOrchestrateHelp() };

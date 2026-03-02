@@ -13,5 +13,5 @@
       "openclaw/plugin-sdk": ["tests/shims/openclaw-plugin-sdk.ts"]
     }
   },
-  "include": ["index.ts", "orchestrate-command.ts", "orchestrate-path.ts", "orchestrate-path-command.ts", "orchestrate-session.ts", "orchestrate-state.ts", "orchestrate-response.ts", "orchestrate-view-model.ts", "tests/**/*.ts"]
+  "include": ["index.ts", "orchestrate-command.ts", "orchestrate-path.ts", "orchestrate-path-command.ts", "orchestrate-session.ts", "orchestrate-state.ts", "orchestrate-response.ts", "orchestrate-view-model.ts", "orchestrate-run-command.ts", "orchestrate-status-command.ts", "tests/**/*.ts"]
 }

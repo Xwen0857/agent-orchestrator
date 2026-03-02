@@ -5,6 +5,7 @@ export type RuntimeStatsSnapshot = {
   queueDepth: number;
   policyMode: string;
   workdomainRoot: string;
+  projectsRoot: string;
   aclDeniedCount: number;
   aclLastDeniedAt: string;
   sandboxEnabled: boolean;

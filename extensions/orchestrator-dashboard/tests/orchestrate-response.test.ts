@@ -11,6 +11,7 @@ const runtimeStats = {
   queueDepth: 16,
   policyMode: "enforce",
   workdomainRoot: "runtime/workdomains",
+  projectsRoot: "projects",
   aclDeniedCount: 1,
   aclLastDeniedAt: "2026-03-02T00:00:00.000Z",
   sandboxEnabled: true,
