@@ -23,6 +23,7 @@ import {
 import { type PathState } from "./orchestrate-path.js";
 import { registerOrchestratorHttpRoutes } from "./orchestrate-http.js";
 import { createOrchestrateCommandHandlers } from "./orchestrate-command-deps.js";
+import { handleBeforeAgentStartHook } from "./orchestrate-session-agent-hook.js";
 import {
   readOrchestrateSessionStore,
   readPathStateStore,
@@ -1422,28 +1423,12 @@ const orchestratorDashboardPlugin = {
     });
 
     api.on("before_agent_start", async (event, ctx) => {
-      const sessionKey = (ctx.sessionKey ?? "").trim();
-      if (!sessionKey) {
-        return;
-      }
-      const existing = await readOrchestrateSession(sessionKey);
-      if (
-        !existing ||
-        (existing.status !== "ACTIVE_DRAFTING" && existing.status !== "SUMMARY_READY")
-      ) {
-        return;
-      }
-      const latestUserMessage = extractLatestUserMessage(
-        Array.isArray(event.messages) ? event.messages : undefined,
-      );
-      let next = existing;
-      if (latestUserMessage && !latestUserMessage.startsWith("/")) {
-        next = applyMessageToDraft(existing, latestUserMessage);
-        await writeOrchestrateSession(next);
-      }
-      return {
-        prependContext: buildEntryAgentContext(next),
-      };
+      return handleBeforeAgentStartHook({
+        event,
+        ctx,
+        readOrchestrateSession,
+        writeOrchestrateSession,
+      });
     });
 
     api.registerCommand({
