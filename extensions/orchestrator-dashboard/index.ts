@@ -43,6 +43,13 @@ import {
   type PathState,
   type WorkspaceConfigSource,
 } from "./orchestrate-path.js";
+import {
+  readOrchestrateSessionStore,
+  readPathStateStore,
+  writeOrchestrateSessionStore,
+  writePathStateStore,
+  writeSummarySnapshotStore,
+} from "./orchestrate-state.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -1697,36 +1704,36 @@ const orchestratorDashboardPlugin = {
     };
 
     const readPathState = async (): Promise<PathState> => {
-      const fallback = buildEmptyPathState(new Date(0).toISOString());
-      const raw = await readJsonOrDefault<Record<string, unknown>>(paths.pathState, fallback);
-      return normalizePathState(raw, fallback);
+      return readPathStateStore({
+        io: { fileExists, readJsonOrDefault, writeJsonAtomic },
+        paths,
+      });
     };
 
     const writePathState = async (next: PathState): Promise<void> => {
-      await writeJsonAtomic(paths.pathState, next);
+      await writePathStateStore({
+        io: { fileExists, readJsonOrDefault, writeJsonAtomic },
+        paths,
+        state: next,
+      });
     };
 
     const readOrchestrateSession = async (
       sessionKey: string,
     ): Promise<OrchestrateSessionState | null> => {
-      if (!sessionKey) {
-        return null;
-      }
-      const sessionPath = buildSessionFilePath(paths.orchestrateSessionsDir, sessionKey);
-      if (!(await fileExists(sessionPath))) {
-        return null;
-      }
-      const fallback = buildEmptyOrchestrateSession({
+      return readOrchestrateSessionStore({
+        io: { fileExists, readJsonOrDefault, writeJsonAtomic },
+        paths,
         sessionKey,
-        channel: "unknown",
-        senderId: "unknown",
       });
-      const raw = await readJsonOrDefault<Record<string, unknown>>(sessionPath, fallback);
-      return normalizeOrchestrateSession(raw, { fallbackSession: fallback });
     };
 
     const writeOrchestrateSession = async (next: OrchestrateSessionState): Promise<void> => {
-      await writeJsonAtomic(buildSessionFilePath(paths.orchestrateSessionsDir, next.session_key), next);
+      await writeOrchestrateSessionStore({
+        io: { fileExists, readJsonOrDefault, writeJsonAtomic },
+        paths,
+        session: next,
+      });
     };
 
     const loadCurrentConfig = async () => {
@@ -2007,22 +2014,17 @@ const orchestratorDashboardPlugin = {
           }
           const previous = session.latest_summary;
           const summary = buildSummaryFromDraft(session);
-          const summaryPath = buildSummaryFilePath(
-            paths.orchestrateRequestsDir,
-            sessionKey,
-            summary.summary_id,
-          );
+          const summaryPath = buildSummaryFilePath(paths.orchestrateRequestsDir, sessionKey, summary.summary_id);
           if (previous) {
-            await writeJsonAtomic(
-              buildSummaryFilePath(paths.orchestrateRequestsDir, sessionKey, previous.summary_id),
-              {
-              session_key: sessionKey,
+            await writeSummarySnapshotStore({
+              io: { fileExists, readJsonOrDefault, writeJsonAtomic },
+              paths,
+              sessionKey,
               summary: {
                 ...previous,
                 status: "superseded",
               },
-              },
-            );
+            });
           }
           const next: OrchestrateSessionState = appendSessionHistory(
             {
@@ -2038,8 +2040,10 @@ const orchestratorDashboardPlugin = {
               content: summary.summary_id,
             },
           );
-          await writeJsonAtomic(summaryPath, {
-            session_key: sessionKey,
+          await writeSummarySnapshotStore({
+            io: { fileExists, readJsonOrDefault, writeJsonAtomic },
+            paths,
+            sessionKey,
             summary,
           });
           await writeOrchestrateSession(next);
