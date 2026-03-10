@@ -45,3 +45,4 @@ Legacy/local-only schemas:
 - `planner-effective-patch-v2` and `planner-amendment-watermark-v2` are the planner ingress authority contracts.
 - `receptionist-amendment-queue-v1` remains a receptionist-local persistence contract for session capture only.
 - `planner-amendment-batch-v1` is legacy/audit-only; it must not be treated as planner authority input.
+- `amendments.md` is not an ingress authority artifact; if present, it is only a task-local compatibility mirror.

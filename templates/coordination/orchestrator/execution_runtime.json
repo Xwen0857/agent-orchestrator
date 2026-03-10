@@ -6,8 +6,8 @@
     "effective_worker_threads": 6
   },
   "local_threads": {
-    "max_parallel": 2,
-    "max_tasks_per_tick": 4
+    "max_parallel": 6,
+    "max_tasks_per_tick": 9
   },
   "security": {
     "policy_mode": "enforce",
@@ -66,5 +66,75 @@
     "enabled": false,
     "dispatch_endpoint": "",
     "note": "reserved for next phase"
+  },
+  "scheduler": {
+    "schema_version": "scheduler-config-v1",
+    "scheduler_kernel_v2_enabled": true,
+    "strategy": "kernel_v2",
+    "retry": {
+      "base_ms": 2000,
+      "max_ms": 60000,
+      "max_attempts": 4
+    },
+    "throttle": {
+      "reserve_ratio": 0.25
+    },
+    "lane_quota": {
+      "recovery_min_share": 0.2,
+      "retry_min_share": 0.2,
+      "assigned_ready_min_share": 0.4
+    },
+    "aging": {
+      "step_seconds": 60,
+      "max_boost": 60
+    },
+    "agent_profiles": {
+      "worker-delivery": {
+        "base_weight": 20,
+        "max_parallel_share": 0.7,
+        "failure_penalty_weight": 20
+      },
+      "tester-ephemeral": {
+        "base_weight": 12,
+        "max_parallel_share": 0.5,
+        "failure_penalty_weight": 12
+      },
+      "audit-guard": {
+        "base_weight": 8,
+        "max_parallel_share": 0.4,
+        "failure_penalty_weight": 8
+      },
+      "unknown": {
+        "base_weight": 6,
+        "max_parallel_share": 0.3,
+        "failure_penalty_weight": 10
+      }
+    },
+    "stale_in_progress_minutes": 60,
+    "container": {
+      "execute": false
+    },
+    "distributed": {
+      "at_least_once": true,
+      "idempotency_scope": "task_id+dispatch_seq+operation_id",
+      "queue": {
+        "root": "runtime/scheduler-queue",
+        "request_topic": "scheduler.dispatch.request",
+        "ack_topic": "scheduler.dispatch.ack",
+        "result_topic": "scheduler.dispatch.result",
+        "heartbeat_topic": "scheduler.worker.heartbeat",
+        "visibility_timeout_ms": 30000,
+        "heartbeat_timeout_ms": 45000
+      },
+      "consumer": {
+        "idempotency_max_keys": 10000,
+        "idempotency_ttl_ms": 86400000
+      }
+    },
+    "rollback_guard": {
+      "max_consecutive_tick_failures": 5,
+      "min_dispatch_success_rate": 0.6,
+      "max_queue_depth_growth": 200
+    }
   }
 }

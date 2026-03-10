@@ -2,6 +2,14 @@
 set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
+# Applies the multi-meta-input refinement path by expanding a first-layer Meta
+# decomposition into worker-facing tasks plus planner artifacts.
+# Inputs: task directory and an optional worker id prefix.
+# Side effects: reads strategy/runtime config, writes planner state files and
+# SplitPlan artifacts, and creates worker task assignments under the orchestrator
+# state directory.
+# Failure model: exits non-zero on missing task metadata, strategy input, or generation failures.
+
 if [[ $# -lt 1 ]]; then
   echo "usage: $0 <task_dir> [worker_prefix]"
   exit 2
@@ -27,6 +35,8 @@ fi
 
 PROPS="$ROOT/templates/coordination/planner/properties.md"
 RUNTIME_CONFIG="$ROOT/templates/coordination/orchestrator/execution_runtime.json"
+DEPENDENCY_SEMANTICS_PATH="$ROOT/templates/coordination/orchestrator/planner_dependency_semantics.json"
+DEPENDENCY_DEFAULTS_PATH="$ROOT/templates/coordination/orchestrator/planner_dependency_defaults.json"
 CREATE_TASK_SCRIPT="$ROOT/agent-orchestrator/scripts/create_task_from_strategy.sh"
 PRIMARY_TEMPLATE_FILE="$ROOT/templates/coordination/planner/primary.example.md"
 PRIMARY_FILE="$(resolve_planner_primary_path)"
@@ -34,6 +44,37 @@ CHECKLIST_TEMPLATE_FILE="$ROOT/templates/coordination/planner/checklist.example.
 CHECKLIST_FILE="$(resolve_planner_checklist_path)"
 COMPLETED_CONTEXT_FILE="$ROOT/templates/coordination/tasks/completed_context.ndjson"
 
+if [[ ! -f "$DEPENDENCY_SEMANTICS_PATH" ]]; then
+  echo "planner dependency semantics missing: $DEPENDENCY_SEMANTICS_PATH"
+  exit 1
+fi
+if [[ ! -f "$DEPENDENCY_DEFAULTS_PATH" ]]; then
+  echo "planner dependency defaults missing: $DEPENDENCY_DEFAULTS_PATH"
+  exit 1
+fi
+if ! jq -e '
+  (.dependency_mode | type == "string" and length > 0) and
+  (.summary_note | type == "string" and length > 0) and
+  (.component_dependency_map | type == "object")
+' "$DEPENDENCY_SEMANTICS_PATH" >/dev/null; then
+  echo "invalid planner dependency semantics: $DEPENDENCY_SEMANTICS_PATH"
+  exit 1
+fi
+if ! jq -e '
+  (.dependency_mode | type == "string" and length > 0) and
+  (.summary_note | type == "string" and length > 0) and
+  (.fallback_dependency_summary | type == "object") and
+  (.fallback_dependency_summary.roots | type == "number") and
+  (.fallback_dependency_summary.blocked | type == "number") and
+  (.fallback_dependency_summary.links | type == "number") and
+  (.fallback_dependency_summary.cross_module_links | type == "number")
+' "$DEPENDENCY_DEFAULTS_PATH" >/dev/null; then
+  echo "invalid planner dependency defaults: $DEPENDENCY_DEFAULTS_PATH"
+  exit 1
+fi
+
+# Pull strategy and related historical context before generating any new worker outputs
+# so planner artifacts and worker tasks are derived from the same snapshot.
 TITLE="$(jq -r '.title // .summary_input.task_goal // .goal // "untitled"' "$STRATEGY")"
 load_planner_strategy_summary "$STRATEGY"
 OWNER="$(jq -r '.owner // "planner-ops"' "$STRATEGY")"
@@ -42,6 +83,18 @@ BUDGET_SECONDS="$(jq -r '.budget.max_execution_time_seconds // 3600' "$STRATEGY"
 NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 PRIMARY_ID="primary_${TASK_ID#task_}"
 CHECKLIST_ID="CL_${TASK_ID#task_}"
+PLANNER_DECISION_JSON_INPUT="${PLANNER_DECISION_JSON:-}"
+PLANNER_DECISION_CONTEXT_JSON_INPUT="${PLANNER_DECISION_CONTEXT_JSON:-{}}"
+PLANNER_INITIAL_PARTITION_JSON_INPUT="${PLANNER_INITIAL_PARTITION_JSON:-}"
+DEFAULT_INITIAL_PARTITION_JSON='{"strategy":"meta_module_partition","modules":[{"module_id":"module_001","module_title":"module_1","child_tasks":[]},{"module_id":"module_002","module_title":"module_2","child_tasks":[]}]}'
+INITIAL_PARTITION_JSON_FOR_WRITE="$PLANNER_INITIAL_PARTITION_JSON_INPUT"
+if ! jq -e . >/dev/null 2>&1 <<<"$INITIAL_PARTITION_JSON_FOR_WRITE"; then
+  INITIAL_PARTITION_JSON_FOR_WRITE="$DEFAULT_INITIAL_PARTITION_JSON"
+fi
+PLANNER_DECISION_RELEASE_POLICY_INPUT="${PLANNER_DECISION_RELEASE_POLICY:-immediate_first_wave}"
+PLANNER_DECOMPOSITION_STRATEGY_INPUT="${PLANNER_DECISION_DECOMPOSITION_STRATEGY:-module_first}"
+PLANNER_WORKER_REFINEMENT_SCOPE_INPUT="${PLANNER_WORKER_REFINEMENT_SCOPE:-multi_meta_input}"
+PLANNER_WORKER_REFINEMENT_STRATEGY_INPUT="${PLANNER_WORKER_REFINEMENT_STRATEGY:-linear_split_units_placeholder}"
 
 RELATED_COMPLETED_TASKS="$(python3 - "$TITLE" "$PLANNER_GOAL" "$COMPLETED_CONTEXT_FILE" <<'PY'
 import json
@@ -94,6 +147,8 @@ PY
 
 mkdir -p "$(dirname "$PRIMARY_FILE")" "$(dirname "$CHECKLIST_FILE")"
 
+# Property helpers keep markdown-backed planner config optional instead of forcing
+# every caller to pre-populate template files.
 get_prop() {
   local key="$1"
   local fallback="$2"
@@ -232,8 +287,7 @@ if [[ -f "$TASK_DIR/plan.md" ]] && ! grep -Fq "Related completed tasks:" "$TASK_
 fi
 
 CHILDREN_JSON='[]'
-TASKS_ROOT="$(cd "$ROOT/templates/coordination/tasks/task_folders" && pwd -P)"
-PARENT_REL="templates/coordination/tasks/task_folders/${TASK_ID}"
+TASKS_ROOT="$(cd "$TASK_DIR/.." && pwd -P)"
 
 for i in $(seq 1 "$SPLIT_UNITS"); do
   suffix="$(printf '%03d' "$i")"
@@ -284,9 +338,65 @@ for i in $(seq 1 "$SPLIT_UNITS"); do
 done
 
 split_plan_path="$TASK_DIR/split_plan.json"
+if jq -e . >/dev/null 2>&1 <<<"$PLANNER_DECISION_CONTEXT_JSON_INPUT" && [[ "$PLANNER_DECISION_CONTEXT_JSON_INPUT" != "{}" ]]; then
+  DECISION_CONTEXT_JSON="$(jq -c \
+    --arg decision_source "$(jq -r '.decision_source // "manual_override"' <<<"${PLANNER_DECISION_JSON_INPUT:-{}}")" \
+    --argjson initial_partition "$INITIAL_PARTITION_JSON_FOR_WRITE" \
+    --arg refinement_scope "$PLANNER_WORKER_REFINEMENT_SCOPE_INPUT" \
+    --arg refinement_strategy "$PLANNER_WORKER_REFINEMENT_STRATEGY_INPUT" \
+    '
+    .meta_decomposition = (.meta_decomposition // {
+      decision_source: $decision_source,
+      decomposition_strategy: ($initial_partition.strategy // "meta_module_partition"),
+      meta_unit_count: (($initial_partition.modules // []) | length),
+      primary_principle: "functional_decoupling",
+      decoupling_confidence: "medium",
+      decoupling_rationale: ["functional boundaries identified for multi-module planning"]
+    })
+    | .worker_refinement = (.worker_refinement // {
+      required: true,
+      refinement_strategy: $refinement_strategy,
+      refinement_scope: $refinement_scope,
+      primary_principle: "engineering_decoupling"
+    })
+    | .granularity_guardrails = (.granularity_guardrails // {
+      mode: "soft",
+      fragment_upper_bound: {
+        max_meta_units: 4,
+        max_leaf_units_per_meta: 8
+      },
+      fragment_lower_bound: {
+        min_meaningful_meta_units: 1,
+        min_meaningful_leaf_scope: "component_sized"
+      },
+      guardrail_triggered: false,
+      guardrail_notes: []
+    })
+    | .initial_partition = (.initial_partition // $initial_partition)
+    ' <<<"$PLANNER_DECISION_CONTEXT_JSON_INPUT")"
+elif jq -e . >/dev/null 2>&1 <<<"$PLANNER_DECISION_JSON_INPUT"; then
+  DECISION_CONTEXT_JSON="$(jq -c '{
+    llm_role,
+    llm_decision_used,
+    token_priority_context,
+    mcp_soft_boundary_signals,
+    meta_decomposition,
+    worker_refinement,
+    granularity_guardrails,
+    agent_contract_version
+  }' <<<"$PLANNER_DECISION_JSON_INPUT")"
+else
+  DECISION_CONTEXT_JSON='{}'
+fi
 jq -n \
   --arg task_id "$TASK_ID" \
   --arg generated_at "$NOW" \
+  --arg schema_version "planner-split-plan-v1" \
+  --arg decomposition_strategy "$PLANNER_DECOMPOSITION_STRATEGY_INPUT" \
+  --arg release_policy "$PLANNER_DECISION_RELEASE_POLICY_INPUT" \
+  --argjson initial_partition "$INITIAL_PARTITION_JSON_FOR_WRITE" \
+  --arg refinement_scope "$PLANNER_WORKER_REFINEMENT_SCOPE_INPUT" \
+  --arg refinement_strategy "$PLANNER_WORKER_REFINEMENT_STRATEGY_INPUT" \
   --argjson logical_threads "$LOGICAL_THREADS" \
   --argjson reserved_threads "$RESERVED_THREADS" \
   --argjson effective_worker_threads "$EFFECTIVE_THREADS" \
@@ -295,7 +405,145 @@ jq -n \
   --argjson units_raw "$UNITS_RAW" \
   --argjson units_max "$UNITS_MAX" \
   --argjson children "$CHILDREN_JSON" \
-  '{task_id:$task_id,generated_at:$generated_at,host:{logical_threads:$logical_threads,reserved_threads:$reserved_threads,effective_worker_threads:$effective_worker_threads},estimated_minutes:$estimated_minutes,split_units_planned:$split_units_planned,units_raw:$units_raw,units_max:$units_max,children:$children}' > "$split_plan_path"
+  --argjson decision_context "$DECISION_CONTEXT_JSON" \
+  --argjson dependency_semantics "$(jq -c '.' "$DEPENDENCY_SEMANTICS_PATH")" \
+  --argjson dependency_defaults "$(jq -c '.' "$DEPENDENCY_DEFAULTS_PATH")" \
+  '
+  {
+    schema_version: $schema_version,
+    task_id: $task_id,
+    generated_at: $generated_at,
+    planner_phase: "initial_plan",
+    decomposition_strategy: $decomposition_strategy,
+    release_policy: $release_policy,
+    host: {
+      logical_threads: $logical_threads,
+      reserved_threads: $reserved_threads,
+      effective_worker_threads: $effective_worker_threads
+    },
+    estimated_minutes: $estimated_minutes,
+    split_units_planned: $split_units_planned,
+    units_raw: $units_raw,
+    units_max: $units_max,
+    children: $children,
+    decision_context: $decision_context,
+    initial_partition: (
+      $initial_partition
+      | .modules = (
+          ($initial_partition.modules // [])
+          | if length > 0 then
+              map(
+                . + {
+                  planned_leaf_count: $split_units_planned,
+                  child_tasks: $children
+                }
+              )
+            else
+              [
+                {
+                  module_id: "module_001",
+                  module_title: "default_logical_module",
+                  rationale: "phase-1 placeholder wrapper around current linear split units",
+                  planned_leaf_count: $split_units_planned,
+                  child_tasks: $children
+                }
+              ]
+            end
+        )
+    ),
+    refinement_partition: (
+      (($initial_partition.modules // [])
+      | if length > 0 then . else [{ module_id: "module_001" }] end) as $modules
+      | (($decision_context.worker_refinement.component_candidates // [])
+        | if type == "array" and length > 0 then . else ["implementation_unit"] end) as $components
+      | (($dependency_semantics.component_dependency_map // {})
+        | if type == "object" then . else {} end) as $dependency_map
+      | ([
+          range(0; ($children | length)) as $idx
+          | ($modules[($idx % ($modules | length))]) as $module
+          | {
+              leaf_id: ("leaf_" + (($idx + 1) | tostring)),
+              module_id: (($module.module_id) // "module_001"),
+              module_title: (($module.module_title) // "default_logical_module"),
+              component_candidate: ($components[($idx % ($components | length))]),
+              stage_id: ("stage_" + (($idx + 1) | tostring)),
+              sequence: ($idx + 1),
+              total_units: $split_units_planned,
+              child_task_id: $children[$idx],
+              release_state: $release_policy
+            }
+        ]) as $base_leafs
+      | ([
+          range(0; ($base_leafs | length)) as $idx
+          | ($base_leafs[$idx]) as $leaf
+          | ($dependency_map[$leaf.component_candidate]) as $dependency_component
+          | (
+              if ($dependency_component | type) == "string" and ($dependency_component | length) > 0 then
+                [$dependency_component]
+              else
+                []
+              end
+            ) as $dependency_components
+          | (
+              if ($dependency_components | length) == 0 then
+                []
+              else
+                [
+                  range(0; $idx) as $prev
+                  | $base_leafs[$prev]
+                  | select(.component_candidate == $dependency_components[0])
+                  | .leaf_id
+                ]
+              end
+            ) as $matching_dependency_leafs
+          | (
+              if ($matching_dependency_leafs | length) > 0 then
+                [($matching_dependency_leafs[-1])]
+              else
+                []
+              end
+            ) as $dependency_leaf_ids
+          | (
+              $leaf + {
+                depends_on_component_candidates: $dependency_components,
+                depends_on_leaf_ids: $dependency_leaf_ids
+              }
+            )
+        ]) as $leaf_units
+      | {
+          strategy: $refinement_strategy,
+          input_scope: $refinement_scope,
+          granularity: "temporary_refinement_granularity",
+          component_candidates: (
+            ($decision_context.worker_refinement.component_candidates // [])
+            | if type == "array" then . else [] end
+          ),
+          leaf_units: $leaf_units,
+          dependency_summary: {
+            mode: $dependency_semantics.dependency_mode,
+            roots: ([$leaf_units[] | select((.depends_on_leaf_ids | length) == 0)] | length),
+            blocked: ([$leaf_units[] | select((.depends_on_leaf_ids | length) > 0)] | length),
+            links: ([$leaf_units[] | (.depends_on_leaf_ids | length)] | add // 0),
+            cross_module_links: (
+              [
+                $leaf_units[] as $leaf
+                | $leaf.depends_on_leaf_ids[]
+                | {
+                    dep: .,
+                    leaf_module: $leaf.module_id
+                  }
+                | . as $edge
+                | ($leaf_units[] | select(.leaf_id == $edge.dep) | .module_id) as $dep_module
+                | select($dep_module != null and $dep_module != $edge.leaf_module)
+              ] | length
+            ),
+            note: $dependency_defaults.summary_note
+          },
+          backlog: []
+        }
+    )
+  }
+  ' > "$split_plan_path"
 
 jq \
   --argjson children "$CHILDREN_JSON" \

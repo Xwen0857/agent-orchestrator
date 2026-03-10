@@ -30,11 +30,7 @@ mkdir -p "$DELIVERY_DIR"
 WS_MAIN="$DELIVERY_DIR/websocket_calculator.py"
 WS_TEST="$DELIVERY_DIR/test_websocket_calculator.py"
 RUNBOOK_MD="$DELIVERY_DIR/RUNBOOK.md"
-AMEND_PATH="$TASK_DIR/amendments.md"
-LATEST_AMENDMENT=""
-if [[ -f "$AMEND_PATH" ]]; then
-  LATEST_AMENDMENT="$(tail -n 1 "$AMEND_PATH" | sed -E 's/^- [0-9TZ:.-]+[[:space:]]*//')"
-fi
+LATEST_AMENDMENT="$(jq -r '.latest_requirement_amendment // ""' "$META" 2>/dev/null || true)"
 
 is_websocket_calculator_goal() {
   [[ "$GOAL_LOWER" == *"websocket"* || "$GOAL_LOWER" == *"web socket"* || "$GOAL_LOWER" == *"ws"* || "$GOAL" == *"websocket"* || "$GOAL" == *"WebSocket"* ]] \

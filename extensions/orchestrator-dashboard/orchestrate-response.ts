@@ -38,8 +38,7 @@ export type TaskStatusResponseParams = {
   runnerBatchSize: number;
   runnerMaxParallel: number;
   runtimeStats: RuntimeStatsSnapshot;
-  requestedMode: string;
-  resolvedMode: string;
+  resolvedMode?: string;
   planningDecision: Record<string, unknown>;
   splitUnitsPlanned: number;
   acl: Record<string, unknown>;
@@ -53,6 +52,15 @@ export type TaskStatusResponseParams = {
   runnerFallbackEnabled: boolean;
   amendmentCount: number;
   lastAmendment: string;
+  amendmentSource: "task_meta" | "none";
+  legacyMirrorPresent?: boolean;
+  plannerReplanStatus: string;
+  plannerReplanExecutionStatus: string;
+  amendmentWatermark: {
+    headVersion: number;
+    applyingVersion: number;
+    consumedVersion: number;
+  } | null;
   recent: string[];
 };
 
@@ -74,8 +82,7 @@ export type RunSuccessResponseParams = {
   runnerBatchSize: number;
   runnerMaxParallel: number;
   runtimeStats: RuntimeStatsSnapshot;
-  requestedMode: string;
-  resolvedMode: string;
+  resolvedMode?: string;
   planningDecision: Record<string, unknown>;
   splitUnitsPlanned: number;
   meta: Record<string, unknown>;
@@ -132,8 +139,6 @@ export function renderTaskStatusResponse(params: TaskStatusResponseParams): stri
     runnerBatchSize,
     runnerMaxParallel,
     runtimeStats,
-    requestedMode,
-    resolvedMode,
     planningDecision,
     splitUnitsPlanned,
     acl,
@@ -147,6 +152,11 @@ export function renderTaskStatusResponse(params: TaskStatusResponseParams): stri
     runnerFallbackEnabled,
     amendmentCount,
     lastAmendment,
+    amendmentSource,
+    legacyMirrorPresent,
+    plannerReplanStatus,
+    plannerReplanExecutionStatus,
+    amendmentWatermark,
     recent,
   } = params;
 
@@ -163,8 +173,6 @@ export function renderTaskStatusResponse(params: TaskStatusResponseParams): stri
     `runner_max_parallel: ${String(runnerMaxParallel)}`,
     `logical_threads: ${String(runtimeStats.logicalThreads)}`,
     `effective_worker_threads: ${String(runtimeStats.effectiveWorkerThreads)}`,
-    `requested_mode: ${requestedMode}`,
-    `resolved_mode: ${resolvedMode}`,
     `decision_source: ${String(planningDecision.decision_source ?? "(none)")}`,
     `decision_reason: ${String(planningDecision.decision_reason ?? "(none)")}`,
     `children_count: ${String(Array.isArray(meta.children) ? meta.children.length : 0)}`,
@@ -216,6 +224,13 @@ export function renderTaskStatusResponse(params: TaskStatusResponseParams): stri
     renderRunnerFallbackHint(runnerStatus, runnerFallbackEnabled),
     `amendments: ${String(amendmentCount)}`,
     amendmentCount > 0 ? `last_amendment: ${lastAmendment}` : "last_amendment: (none)",
+    `amendment_source: ${amendmentSource}`,
+    `legacy_mirror_present: ${legacyMirrorPresent ? "true" : "false"}`,
+    `planner_replan_status: ${plannerReplanStatus || "(none)"}`,
+    `planner_replan_execution_status: ${plannerReplanExecutionStatus || "(none)"}`,
+    amendmentWatermark
+      ? `amendment_watermark: ${amendmentWatermark.headVersion}/${amendmentWatermark.applyingVersion}/${amendmentWatermark.consumedVersion}`
+      : "amendment_watermark: (none)",
     recent.length > 0 ? "recent_events:" : "recent_events: (none)",
     ...recent.map((line) => `- ${line}`),
   ].join("\n");
@@ -240,8 +255,6 @@ export function renderRunSuccessResponse(params: RunSuccessResponseParams): stri
     runnerBatchSize,
     runnerMaxParallel,
     runtimeStats,
-    requestedMode,
-    resolvedMode,
     planningDecision,
     splitUnitsPlanned,
     meta,
@@ -280,8 +293,6 @@ export function renderRunSuccessResponse(params: RunSuccessResponseParams): stri
     `runner_max_parallel: ${String(runnerMaxParallel)}`,
     `logical_threads: ${String(runtimeStats.logicalThreads)}`,
     `effective_worker_threads: ${String(runtimeStats.effectiveWorkerThreads)}`,
-    `requested_mode: ${requestedMode}`,
-    `resolved_mode: ${resolvedMode}`,
     `decision_source: ${String(planningDecision.decision_source ?? "manual_override")}`,
     `decision_reason: ${String(planningDecision.decision_reason ?? "(none)")}`,
     `split_units_planned: ${String(splitUnitsPlanned)}`,

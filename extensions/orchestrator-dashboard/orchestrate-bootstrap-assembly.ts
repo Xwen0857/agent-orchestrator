@@ -66,13 +66,20 @@ export function buildOrchestratorBootstrapAssembly(params: {
     runnerBatchSize: number;
     runnerMaxParallel: number;
     runnerTasksRootArg: string;
+    executionRuntimePath: string;
   };
   io: OrchestrateIo;
   helpers: {
     emitEvent: (type: string, payload: Record<string, unknown>) => Promise<void>;
     runWhitelistedScript: (params: {
       repoRoot: string;
-      scriptName: "orchestrate_multi_once";
+      scriptName:
+        | "orchestrate_multi_once"
+        | "transition_task_state"
+        | "append_task_event"
+        | "dashboard_summary"
+        | "agent_dispatch"
+        | "kb_submit_candidate";
       args: string[];
       timeoutMs?: number;
       maxBufferBytes?: number;
@@ -190,10 +197,12 @@ export function buildOrchestratorBootstrapAssembly(params: {
       runnerBatchSize: params.cfg.runnerBatchSize,
       runnerMaxParallel: params.cfg.runnerMaxParallel,
       runnerTasksRootArg: params.cfg.runnerTasksRootArg,
+      executionRuntimePath: params.cfg.executionRuntimePath,
     },
     io: {
       fileExists: params.io.fileExists,
       readText: params.io.readText,
+      readJsonOrDefault: params.io.readJsonOrDefault,
       runScript: params.io.runScript,
     },
     runWhitelistedScript: params.helpers.runWhitelistedScript,

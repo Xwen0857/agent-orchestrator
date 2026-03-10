@@ -1,8 +1,10 @@
 import {
   renderTaskStatusResponse,
   type ExternalRunnerSnapshot,
+  type TaskStatusResponseParams,
   type RuntimeStatsSnapshot,
 } from "./orchestrate-response.js";
+import { readTaskAmendmentAuthority } from "./orchestrate-task-amendment.js";
 import { buildTaskStatusResponseParams } from "./orchestrate-view-model.js";
 import type { RuntimeConsistencySnapshot } from "./orchestrate-runtime-consistency.js";
 import type { RunnerSnapshot } from "./orchestrate-runner-runtime.js";
@@ -25,7 +27,6 @@ type HandleStatusSubcommandParams = {
     fileExists: (targetPath: string) => Promise<boolean>;
     readJsonOrDefault: <T>(targetPath: string, fallback: T) => Promise<T>;
     readNdjson: (targetPath: string) => Promise<Array<Record<string, unknown>>>;
-    readText: (targetPath: string) => Promise<string>;
   };
   runtime: {
     getRunnerLockMtime: () => Promise<string>;
@@ -128,16 +129,41 @@ export async function handleStatusSubcommand(
 
   const meta = await io.readJsonOrDefault<Record<string, unknown>>(metaPath, {});
   const events = await io.readNdjson(logPath);
-  let amendmentCount = 0;
-  let lastAmendment = "";
-  if (await io.fileExists(amendmentsPath)) {
-    const raw = await io.readText(amendmentsPath);
-    const lines = raw
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.startsWith("- "));
-    amendmentCount = lines.length;
-    lastAmendment = (lines[lines.length - 1] ?? "").replace(/^- /u, "");
+  const amendmentAuthority = readTaskAmendmentAuthority(meta);
+  const amendmentCount = amendmentAuthority.amendmentCount;
+  const lastAmendment = amendmentAuthority.latestAmendment;
+  const amendmentSource = amendmentAuthority.amendmentSource;
+  const legacyMirrorPresent = await io.fileExists(amendmentsPath);
+  let plannerReplanStatus = "";
+  let plannerReplanExecutionStatus = "";
+  const plannerReplan = meta.planner_replan;
+  if (plannerReplan && typeof plannerReplan === "object" && !Array.isArray(plannerReplan)) {
+    plannerReplanStatus =
+      typeof (plannerReplan as Record<string, unknown>).status === "string"
+        ? String((plannerReplan as Record<string, unknown>).status)
+        : "";
+  }
+  const runtimeReplan = meta.runtime_replan;
+  if (runtimeReplan && typeof runtimeReplan === "object" && !Array.isArray(runtimeReplan)) {
+    plannerReplanExecutionStatus =
+      typeof (runtimeReplan as Record<string, unknown>).consume_status === "string"
+        ? String((runtimeReplan as Record<string, unknown>).consume_status)
+        : "";
+  }
+  let amendmentWatermark: TaskStatusResponseParams["amendmentWatermark"] = null;
+  const effectivePatchPath =
+    typeof meta.latest_effective_patch_path === "string" ? meta.latest_effective_patch_path.trim() : "";
+  const watermarkPath =
+    effectivePatchPath && effectivePatchPath.endsWith(".effective-patch.v2.json")
+      ? effectivePatchPath.replace(/\.effective-patch\.v2\.json$/u, ".watermark.v2.json")
+      : "";
+  if (watermarkPath && (await io.fileExists(watermarkPath))) {
+    const watermark = await io.readJsonOrDefault<Record<string, unknown>>(watermarkPath, {});
+    amendmentWatermark = {
+      headVersion: Math.max(0, Math.floor(Number(watermark.head_version) || 0)),
+      applyingVersion: Math.max(0, Math.floor(Number(watermark.applying_version) || 0)),
+      consumedVersion: Math.max(0, Math.floor(Number(watermark.consumed_version) || 0)),
+    };
   }
   const recent = events.slice(-3).map((entry) => {
     const action = String(entry.action ?? "UNKNOWN");
@@ -173,6 +199,11 @@ export async function handleStatusSubcommand(
       runnerFallbackEnabled: cfg.runnerFallbackEnabled,
       amendmentCount,
       lastAmendment,
+      amendmentSource,
+      legacyMirrorPresent,
+      plannerReplanStatus,
+      plannerReplanExecutionStatus,
+      amendmentWatermark,
       recent,
     }),
   );

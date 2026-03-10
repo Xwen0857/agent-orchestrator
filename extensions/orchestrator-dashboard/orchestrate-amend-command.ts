@@ -1,4 +1,5 @@
 import path from "node:path";
+import { renderTaskAmendmentMirror } from "./orchestrate-task-amendment.js";
 
 type HandleAmendSubcommandParams = {
   payload: string;
@@ -6,7 +7,9 @@ type HandleAmendSubcommandParams = {
   taskFoldersRoot: string;
   io: {
     fileExists: (targetPath: string) => Promise<boolean>;
+    readJsonOrDefault: <T>(targetPath: string, fallback: T) => Promise<T>;
     readText: (targetPath: string) => Promise<string>;
+    writeJsonAtomic: (targetPath: string, payload: unknown) => Promise<void>;
     writeTextAtomic: (targetPath: string, payload: string) => Promise<void>;
   };
   runWhitelistedScript: (params: {
@@ -33,35 +36,58 @@ export async function handleAmendSubcommand(
     return `task not found: ${taskId}`;
   }
 
+  const amendedAt = new Date().toISOString();
+  const operationId = `op_amend_${Date.now()}`;
   const amendPath = path.join(taskDir, "amendments.md");
-  const line = `- ${new Date().toISOString()} ${amendment}`;
-  if (await params.io.fileExists(amendPath)) {
-    const current = await params.io.readText(amendPath);
-    await params.io.writeTextAtomic(amendPath, `${current.trimEnd()}\n${line}\n`);
-  } else {
-    await params.io.writeTextAtomic(amendPath, `# Amendments\n\n${line}\n`);
-  }
+  await params.runWhitelistedScript({
+    repoRoot: params.repoRoot,
+    scriptName: "append_task_event",
+    args: [
+      path.relative(params.repoRoot, taskDir),
+      "planner-core",
+      operationId,
+      "REQUIREMENT_AMENDED",
+      amendment.replace(/\s+/g, "_"),
+    ],
+  });
 
+  const meta = await params.io.readJsonOrDefault<Record<string, unknown>>(metaPath, {});
+  const currentCount = Math.max(0, Math.floor(Number(meta.requirement_amendment_count) || 0));
+  await params.io.writeJsonAtomic(metaPath, {
+    ...meta,
+    latest_requirement_amendment: amendment,
+    latest_requirement_amended_at: amendedAt,
+    requirement_amendment_count: currentCount + 1,
+    updated_at: amendedAt,
+  });
+
+  let mirrorWritten = false;
   try {
-    await params.runWhitelistedScript({
-      repoRoot: params.repoRoot,
-      scriptName: "append_task_event",
-      args: [
-        path.relative(params.repoRoot, taskDir),
-        "planner-core",
-        `op_amend_${Date.now()}`,
-        "REQUIREMENT_AMENDED",
-        amendment.replace(/\s+/g, "_"),
-      ],
-    });
+    const current = (await params.io.fileExists(amendPath)) ? await params.io.readText(amendPath) : "";
+    await params.io.writeTextAtomic(
+      amendPath,
+      renderTaskAmendmentMirror({
+        currentText: current,
+        amendedAt,
+        amendment,
+      }),
+    );
+    mirrorWritten = true;
   } catch {
-    // Non-blocking: amendment must still be persisted even if event script fails.
+    mirrorWritten = false;
   }
 
   await params.emitEvent("orchestrate.task.amended", {
     task_id: taskId,
     amendment,
+    amended_at: amendedAt,
+    authority: {
+      meta_path: metaPath,
+      event_operation_id: operationId,
+    },
     amendment_path: amendPath,
+    amendment_path_is_legacy_mirror: true,
+    amendment_mirror_written: mirrorWritten,
   });
   return [
     `task_id: ${taskId}`,

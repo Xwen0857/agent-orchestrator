@@ -2,6 +2,7 @@ import { handleAmendSubcommand } from "./orchestrate-amend-command.js";
 import { handleIntakeSubcommand } from "./orchestrate-intake-command.js";
 import { handleKbSyncSubcommand } from "./orchestrate-kb-sync-command.js";
 import { handlePathSubcommand } from "./orchestrate-path-command.js";
+import { handleResumeSubcommand } from "./orchestrate-resume-command.js";
 import { handleRunSubcommand } from "./orchestrate-run-command.js";
 import { handleSessionSubcommand } from "./orchestrate-session-command.js";
 import { handleStatusSubcommand } from "./orchestrate-status-command.js";
@@ -63,9 +64,11 @@ type CreateOrchestrateCommandHandlersParams = {
     scriptName:
       | "create_task_from_strategy"
       | "planner_apply_amendment_batch"
+      | "runtime_resume_replan"
       | "planner_entry"
       | "transition_task_state"
       | "dashboard_summary"
+      | "kb_submit_candidate"
       | "kb_import_from_workspace"
       | "append_task_event";
     args: string[];
@@ -133,7 +136,6 @@ export function createOrchestrateCommandHandlers(
           fileExists: params.io.fileExists,
           readJsonOrDefault: params.io.readJsonOrDefault,
           readNdjson: params.io.readNdjson,
-          readText: params.io.readText,
         },
         runtime: {
           getRunnerLockMtime: params.runtime.getRunnerLockMtime,
@@ -182,10 +184,27 @@ export function createOrchestrateCommandHandlers(
         taskFoldersRoot: params.paths.taskFoldersRoot,
         io: {
           fileExists: params.io.fileExists,
+          readJsonOrDefault: params.io.readJsonOrDefault,
           readText: params.io.readText,
+          writeJsonAtomic: params.io.writeJsonAtomic,
           writeTextAtomic: params.io.writeTextAtomic,
         },
         runWhitelistedScript: params.runWhitelistedScript,
+        emitEvent: params.emitEvent,
+      }),
+    handleResume: async (payload: string): Promise<string> =>
+      handleResumeSubcommand({
+        payload,
+        repoRoot: params.repoRoot,
+        taskFoldersRoot: params.paths.taskFoldersRoot,
+        io: {
+          fileExists: params.io.fileExists,
+        },
+        runWhitelistedScript: async (input) =>
+          params.runWhitelistedScript({
+            ...input,
+            scriptName: "runtime_resume_replan",
+          }),
         emitEvent: params.emitEvent,
       }),
     handleRun: async (payload: string, ctx: CommandCtx): Promise<string> =>

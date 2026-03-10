@@ -6,6 +6,7 @@ export type OrchestrateSubcommand =
   | "run"
   | "status"
   | "help"
+  | "resume"
   | "intake"
   | "amend"
   | "kb-sync"
@@ -38,6 +39,10 @@ export type OrchestrateReceptionistState = {
   last_action_at: string;
 };
 
+// Legacy compatibility hint carried through older session/summary payloads.
+// Planner mode authority lives in planner decision + runtime replan contracts.
+export type LegacyRequestedMode = "auto" | "single" | "multi";
+
 export type OrchestrateSummary = {
   summary_id: string;
   created_at: string;
@@ -52,7 +57,7 @@ export type OrchestrateSummary = {
       max_token_cost: number;
       max_execution_time_seconds: number;
     };
-    requested_mode: "auto" | "single" | "multi";
+    requested_mode?: LegacyRequestedMode;
     constraints: string[];
     deliverables: string[];
     notes: string[];
@@ -82,7 +87,7 @@ export type OrchestrateSessionState = {
       max_token_cost: number;
       max_execution_time_seconds: number;
     };
-    requested_mode: "auto" | "single" | "multi";
+    requested_mode?: LegacyRequestedMode;
     constraints: string[];
     deliverables: string[];
     notes: string[];
@@ -124,6 +129,7 @@ const ORCHESTRATE_SUBCOMMANDS: ReadonlySet<OrchestrateSubcommand> = new Set([
   "run",
   "status",
   "help",
+  "resume",
   "intake",
   "amend",
   "kb-sync",
@@ -166,8 +172,11 @@ function normalizeRiskLevel(value: unknown, fallback: "LOW" | "MEDIUM" | "HIGH")
   return "MEDIUM";
 }
 
-function normalizeRequestedMode(value: unknown): "auto" | "single" | "multi" {
-  const normalized = normalizeString(value, "auto");
+function normalizeRequestedMode(
+  value: unknown,
+  fallback: LegacyRequestedMode = "auto",
+): LegacyRequestedMode {
+  const normalized = normalizeString(value, fallback);
   if (normalized === "single" || normalized === "multi") {
     return normalized;
   }
@@ -332,7 +341,8 @@ export function renderSessionSummary(session: OrchestrateSessionState): string {
     `workspace_root: ${session.draft.workspace_root || "(default)"}`,
     `risk_level: ${session.draft.risk_level}`,
     `budget: ${session.draft.budget.max_token_cost},${session.draft.budget.max_execution_time_seconds}`,
-    `requested_mode: ${session.draft.requested_mode}`,
+    "planner_ingress: auto-only",
+    "initial_split_decision: planner-managed",
     `deliverables: ${session.draft.deliverables.join(", ") || "(none)"}`,
     `constraints: ${session.draft.constraints.join(", ") || "(none)"}`,
     latestSummary ? `latest_summary_id: ${latestSummary.summary_id}` : "latest_summary_id: (none)",
@@ -370,14 +380,6 @@ export function applyMessageToDraft(
     next.draft.risk_level = "LOW";
   } else if (/\b(medium)\b/u.test(lower) || /中风险/u.test(text)) {
     next.draft.risk_level = "MEDIUM";
-  }
-
-  if (/(强制单任务|不要拆分|single mode|single task)/u.test(text)) {
-    next.draft.requested_mode = "single";
-  } else if (/(强制\s*multi|强制多任务|并行|拆分|多个模块|multi mode|multi task)/u.test(text)) {
-    next.draft.requested_mode = "multi";
-  } else if (/(自动模式|auto mode)/u.test(text)) {
-    next.draft.requested_mode = "auto";
   }
 
   const projectMatch = text.match(/project[_\s-]*id\s*[:=]\s*([A-Za-z0-9._-]+)/iu);
@@ -485,7 +487,10 @@ export function normalizeOrchestrateSummary(
         max_token_cost: 50000,
         max_execution_time_seconds: 3600,
       }),
-      requested_mode: normalizeRequestedMode(contentRaw.requested_mode),
+      requested_mode:
+        typeof contentRaw.requested_mode === "string"
+          ? normalizeRequestedMode(contentRaw.requested_mode)
+          : undefined,
       constraints: normalizeStringList(contentRaw.constraints),
       deliverables: normalizeStringList(contentRaw.deliverables),
       notes: normalizeStringList(contentRaw.notes),
@@ -581,7 +586,10 @@ export function normalizeOrchestrateSession(
       workspace_root: normalizeString(draftRaw.workspace_root, fallback.draft.workspace_root),
       risk_level: normalizeRiskLevel(draftRaw.risk_level, fallback.draft.risk_level),
       budget: normalizeBudget(draftRaw.budget, fallback.draft.budget),
-      requested_mode: normalizeRequestedMode(draftRaw.requested_mode),
+      requested_mode:
+        typeof draftRaw.requested_mode === "string"
+          ? normalizeRequestedMode(draftRaw.requested_mode, fallback.draft.requested_mode ?? "auto")
+          : fallback.draft.requested_mode,
       constraints: normalizeStringList(draftRaw.constraints),
       deliverables: normalizeStringList(draftRaw.deliverables),
       notes: normalizeStringList(draftRaw.notes),
@@ -653,7 +661,8 @@ export function buildEntryAgentContext(
     `- workspace_root: ${session.draft.workspace_root || "(default)"}`,
     `- risk_level: ${session.draft.risk_level}`,
     `- budget: ${session.draft.budget.max_token_cost},${session.draft.budget.max_execution_time_seconds}`,
-    `- requested_mode: ${session.draft.requested_mode}`,
+    "- planner_ingress: auto-only",
+    "- initial_split_decision: planner-managed",
     `- deliverables: ${session.draft.deliverables.join(", ") || "(none)"}`,
   ];
   if (decodeContractBlock?.trim()) {

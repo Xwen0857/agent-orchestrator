@@ -155,6 +155,98 @@
       "items": {
         "type": "string"
       }
+    },
+    "planner_replan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "applied",
+            "resolved"
+          ]
+        },
+        "impact": {
+          "type": "string",
+          "enum": [
+            "soft",
+            "refresh_required",
+            "hard"
+          ]
+        },
+        "worker_policy": {
+          "type": "string",
+          "enum": [
+            "continue",
+            "revalidate_then_resume",
+            "pause_and_require_replan"
+          ]
+        },
+        "requested_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "applied_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "scope_summary": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "latest_effective_patch_path": {
+          "type": "string"
+        },
+        "latest_amendment_batch_path": {
+          "type": "string"
+        }
+      }
+    },
+    "runtime_replan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "consume_status": {
+          "type": "string",
+          "enum": [
+            "pending_consume",
+            "ready",
+            "awaiting_revalidation",
+            "paused"
+          ]
+        },
+        "consumed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "resumed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "blocked_reason": {
+          "type": "string"
+        },
+        "last_runtime_actor": {
+          "type": "string"
+        },
+        "last_runtime_transition": {
+          "type": "string"
+        },
+        "source_planner_requested_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source_planner_policy": {
+          "type": "string"
+        },
+        "source_planner_impact": {
+          "type": "string"
+        }
+      }
     }
   }
 }

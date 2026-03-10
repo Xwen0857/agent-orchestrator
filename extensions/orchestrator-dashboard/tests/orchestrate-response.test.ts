@@ -52,8 +52,6 @@ describe("orchestrate response rendering", () => {
       runnerBatchSize: 4,
       runnerMaxParallel: 2,
       runtimeStats,
-      requestedMode: "auto",
-      resolvedMode: "multi",
       planningDecision: {
         decision_source: "planner_rules_fallback",
         decision_reason: "complex task",
@@ -70,12 +68,23 @@ describe("orchestrate response rendering", () => {
       runnerFallbackEnabled: true,
       amendmentCount: 1,
       lastAmendment: "latest",
+      amendmentSource: "task_meta",
+      legacyMirrorPresent: false,
+      plannerReplanStatus: "queued",
+      plannerReplanExecutionStatus: "pending_consume",
+      amendmentWatermark: {
+        headVersion: 5,
+        applyingVersion: 4,
+        consumedVersion: 3,
+      },
       recent: ["2026-03-02T00:00:03.000Z TEST IN_PROGRESS"],
     });
 
     expect(text).toContain("task_id: task_1");
-    expect(text).toContain("requested_mode: auto");
-    expect(text).toContain("resolved_mode: multi");
+    expect(text).toContain("amendment_source: task_meta");
+    expect(text).toContain("legacy_mirror_present: false");
+    expect(text).toContain("planner_replan_status: queued");
+    expect(text).toContain("amendment_watermark: 5/4/3");
     expect(text).toContain("recent_events:");
     expect(text).toContain("- 2026-03-02T00:00:03.000Z TEST IN_PROGRESS");
   });
@@ -108,8 +117,6 @@ describe("orchestrate response rendering", () => {
       runnerBatchSize: 4,
       runnerMaxParallel: 2,
       runtimeStats,
-      requestedMode: "single",
-      resolvedMode: "single",
       planningDecision: {},
       splitUnitsPlanned: 1,
       meta: {

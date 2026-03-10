@@ -1,0 +1,10 @@
+{
+  "dependency_mode": "component_semantic_linearized",
+  "summary_note": "planning_hint_not_scheduler_dag",
+  "fallback_dependency_summary": {
+    "roots": 0,
+    "blocked": 0,
+    "links": 0,
+    "cross_module_links": 0
+  }
+}

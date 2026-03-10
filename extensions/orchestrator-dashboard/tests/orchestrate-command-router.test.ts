@@ -9,6 +9,7 @@ function createCommandHandlers() {
     handleKbSync: vi.fn(async () => "kb ok"),
     handleIntake: vi.fn(async () => "intake ok"),
     handleAmend: vi.fn(async () => "amend ok"),
+    handleResume: vi.fn(async () => "resume ok"),
     handleRun: vi.fn(async () => "run ok"),
   };
 }
@@ -116,5 +117,18 @@ describe("orchestrate command router", () => {
 
     expect(result).toEqual({ text: "session ok" });
     expect(handlers.handleSession).toHaveBeenCalledWith("summary", expect.objectContaining({ sessionKey: "sess_demo" }));
+  });
+
+  it("dispatches runtime recovery through the resume handler", async () => {
+    const handlers = createCommandHandlers();
+    const result = await handleOrchestrateCommand({
+      ctx: { args: "resume task_demo" },
+      commandHandlers: handlers,
+      consistency: createConsistency(),
+      renderOrchestrateHelp: () => "help",
+    });
+
+    expect(result).toEqual({ text: "resume ok" });
+    expect(handlers.handleResume).toHaveBeenCalledWith("task_demo");
   });
 });

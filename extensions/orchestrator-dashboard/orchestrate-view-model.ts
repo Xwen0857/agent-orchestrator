@@ -36,11 +36,19 @@ export function buildTaskStatusResponseParams(input: {
   runnerFallbackEnabled: boolean;
   amendmentCount: number;
   lastAmendment: string;
+  amendmentSource: "task_meta" | "none";
+  legacyMirrorPresent?: boolean;
+  plannerReplanStatus?: string;
+  plannerReplanExecutionStatus?: string;
+  amendmentWatermark?: {
+    headVersion: number;
+    applyingVersion: number;
+    consumedVersion: number;
+  } | null;
   recent: string[];
 }): TaskStatusResponseParams {
   const { meta } = input;
   const splitUnitsPlanned = asPositiveInt(meta.split_units_planned, 1);
-  const requestedMode = String(meta.requested_mode ?? "auto");
   const resolvedMode = String(
     meta.execution_mode ??
       (Array.isArray(meta.children) && meta.children.length > 0 ? "multi" : "single"),
@@ -52,13 +60,16 @@ export function buildTaskStatusResponseParams(input: {
 
   return {
     ...input,
-    requestedMode,
     resolvedMode,
     planningDecision,
     splitUnitsPlanned,
     acl,
     aggregate,
     executionRoles,
+    legacyMirrorPresent: Boolean(input.legacyMirrorPresent),
+    plannerReplanStatus: input.plannerReplanStatus ?? "",
+    plannerReplanExecutionStatus: input.plannerReplanExecutionStatus ?? "",
+    amendmentWatermark: input.amendmentWatermark ?? null,
   };
 }
 
@@ -80,7 +91,7 @@ export function buildRunSuccessResponseParams(input: {
   runnerBatchSize: number;
   runnerMaxParallel: number;
   runtimeStats: RuntimeStatsInput;
-  requestedModeDefault: string;
+  requestedModeDefault?: string;
   meta: Record<string, unknown>;
   workspaceConfigSourceDefault: string;
   workspaceValidatedDefault: boolean;
@@ -98,7 +109,6 @@ export function buildRunSuccessResponseParams(input: {
 }): RunSuccessResponseParams {
   const { meta } = input;
   const splitUnitsPlanned = asPositiveInt(meta.split_units_planned, 1);
-  const requestedMode = String(meta.requested_mode ?? input.requestedModeDefault);
   const resolvedMode = String(
     meta.execution_mode ??
       (Array.isArray(meta.children) && meta.children.length > 0 ? "multi" : "single"),
@@ -124,7 +134,6 @@ export function buildRunSuccessResponseParams(input: {
     runnerBatchSize: input.runnerBatchSize,
     runnerMaxParallel: input.runnerMaxParallel,
     runtimeStats: input.runtimeStats,
-    requestedMode,
     resolvedMode,
     planningDecision,
     splitUnitsPlanned,

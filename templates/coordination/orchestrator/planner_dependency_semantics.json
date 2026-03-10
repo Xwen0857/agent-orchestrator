@@ -1,0 +1,12 @@
+{
+  "dependency_mode": "component_semantic_linearized",
+  "summary_note": "planning_hint_not_scheduler_dag",
+  "component_dependency_map": {
+    "transport_adapter": "protocol_schema",
+    "request_handler": "api_contract",
+    "execution_flow": "core_model",
+    "integration_adapter": "adapter_interface",
+    "verification_runner": "test_cases",
+    "docs_notes": "runbook_patch"
+  }
+}

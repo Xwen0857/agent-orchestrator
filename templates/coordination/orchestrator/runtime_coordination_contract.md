@@ -48,6 +48,7 @@ Purpose:
 
 - Runtime contract is additive-first; unknown fields must be ignored by consumers.
 - Guard defaults must fail safe (`should_block_side_effects` true only on explicit mismatch/pause).
+- Task amendment runtime breadcrumbs must prefer task-folder authority (`meta.json` + `log.ndjson`); markdown mirrors are legacy artifacts and must not drive status/runtime projection.
 - Worker runtime contracts are owner-split:
   - planner owns semantic slice inputs
   - scheduler/ops owns dispatch and budget lane

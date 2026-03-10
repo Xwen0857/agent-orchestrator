@@ -81,6 +81,7 @@ ENSURE_WORKSPACE_SCRIPT="$ROOT/agent-orchestrator/scripts/ensure_workspace_contr
 ENV_BUILD_SCRIPT="$ROOT/agent-orchestrator/scripts/workspace_build_env.sh"
 WS_CHANGE_DETECT_SCRIPT="$ROOT/agent-orchestrator/scripts/detect_workspace_user_changes.sh"
 WS_SYNC_SCRIPT="$ROOT/agent-orchestrator/scripts/planner_sync_on_workspace_change.sh"
+REPLAN_CONSUME_SCRIPT="$ROOT/agent-orchestrator/scripts/planner_consume_replan_queue.sh"
 AUDIT_WS_DELTA_SCRIPT="$ROOT/agent-orchestrator/scripts/audit_workspace_delta.sh"
 AGGREGATE_SCRIPT="$ROOT/agent-orchestrator/scripts/aggregate_child_deliveries.sh"
 AUDIT_AGGREGATE_SCRIPT="$ROOT/agent-orchestrator/scripts/audit_aggregate_release.sh"
@@ -152,6 +153,10 @@ if [[ ! -x "$WS_CHANGE_DETECT_SCRIPT" ]]; then
 fi
 if [[ ! -x "$WS_SYNC_SCRIPT" ]]; then
   echo "workspace sync script not executable: $WS_SYNC_SCRIPT"
+  exit 1
+fi
+if [[ ! -x "$REPLAN_CONSUME_SCRIPT" ]]; then
+  echo "replan consume script not executable: $REPLAN_CONSUME_SCRIPT"
   exit 1
 fi
 if [[ ! -x "$AUDIT_WS_DELTA_SCRIPT" ]]; then
@@ -671,6 +676,42 @@ while IFS= read -r -d '' meta; do
     runtime_profile_project="$PROJECT_RUNTIME_PROFILE_DEFAULT"
   fi
   ensure_execution_roles_meta "$task_dir" "$state" "$PLANNING_ACTOR" "$SCHEDULING_ACTOR"
+  planner_replan_status="$(jq -r '.planner_replan.status // ""' "$meta" 2>/dev/null || true)"
+  if [[ "$planner_replan_status" == "queued" && "$state" != "CLOSED" ]]; then
+    if ! "$REPLAN_CONSUME_SCRIPT" "$task_dir" >/dev/null 2>&1; then
+      failed=$((failed + 1))
+      failed_lines+=("$task_id: planner replan consume failed")
+      continue
+    fi
+    advanced=$((advanced + 1))
+    continue
+  fi
+  if [[ "$planner_replan_status" == "applied" && "$state" != "CLOSED" ]]; then
+    planner_replan_worker_policy="$(jq -r '.planner_replan.worker_policy // "continue"' "$meta" 2>/dev/null || true)"
+    runtime_replan_consume_status="$(jq -r '.runtime_replan.consume_status // ""' "$meta" 2>/dev/null || true)"
+    if [[ "$planner_replan_worker_policy" == "revalidate_then_resume" && "$runtime_replan_consume_status" != "ready" ]]; then
+      tmp_meta="$(mktemp "$task_dir/.meta.revalidated.XXXXXX.json")"
+      now_revalidated="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+      jq \
+        --arg now "$now_revalidated" \
+        '.runtime_replan.consume_status = "ready"
+        | .runtime_replan.consumed_at = (.runtime_replan.consumed_at // $now)
+        | .runtime_replan.last_runtime_actor = "orchestrate_once"
+        | .runtime_replan.last_runtime_transition = "awaiting_revalidation->ready"
+        | .workspace_last_synced_seq = (.workspace_user_change_seq // .workspace_last_synced_seq // 0)
+        | .workspace_last_sync_reason = "receptionist_amendment_batch_revalidated"
+        | .dirty_state = false
+        | .updated_at = $now' "$meta" > "$tmp_meta" && mv "$tmp_meta" "$meta"
+      append_event_nonfatal "$task_dir" "$PLANNING_ACTOR" "PLANNER_REPLAN_REVALIDATED" "planner revalidated amended inputs before resume" "$state" "$state"
+      append_if_missing "$task_dir/work.md" "- Latest action: planner revalidated amended inputs before resume"
+      advanced=$((advanced + 1))
+      continue
+    fi
+    if [[ "$planner_replan_worker_policy" == "pause_and_require_replan" ]]; then
+      append_if_missing "$task_dir/work.md" "- Latest action: worker execution paused pending runtime recovery request"
+      continue
+    fi
+  fi
 
   case "$state" in
     CREATED)

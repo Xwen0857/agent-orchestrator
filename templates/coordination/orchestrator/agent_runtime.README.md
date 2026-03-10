@@ -26,3 +26,8 @@ Auth mode behavior:
 - `standalone`: use `api_key` then `api_key_env`.
 - `openclaw`: prefer `api.config.models.providers.<provider>.apiKey`, then provider env (e.g. `OPENAI_API_KEY`, `GEMINI_API_KEY`).
 - `auto`: try `standalone`, then `openclaw`.
+
+Planner dependency semantics:
+- `dependency_mode`: `component_semantic_linearized`
+- `summary_note`: `planning_hint_not_scheduler_dag`
+- These constants describe planner-only coordination hints. They are not scheduler DAG execution controls.

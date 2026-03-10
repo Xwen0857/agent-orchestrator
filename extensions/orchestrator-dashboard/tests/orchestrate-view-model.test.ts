@@ -62,14 +62,20 @@ describe("orchestrate view-model builders", () => {
       runnerFallbackEnabled: false,
       amendmentCount: 0,
       lastAmendment: "",
+      amendmentSource: "none",
+      legacyMirrorPresent: false,
+      plannerReplanStatus: "",
+      plannerReplanExecutionStatus: "",
+      amendmentWatermark: null,
       recent: [],
     });
 
-    expect(params.requestedMode).toBe("auto");
     expect(params.resolvedMode).toBe("multi");
     expect(params.splitUnitsPlanned).toBe(5);
     expect(params.acl.denied_count).toBe(2);
     expect(params.executionRoles.planning_actor).toBe("planner-core");
+    expect(params.amendmentSource).toBe("none");
+    expect(params.legacyMirrorPresent).toBe(false);
   });
 
   it("derives run success render params from meta defaults", () => {
@@ -91,7 +97,6 @@ describe("orchestrate view-model builders", () => {
       runnerBatchSize: 4,
       runnerMaxParallel: 2,
       runtimeStats,
-      requestedModeDefault: "single",
       meta: {
         split_units_planned: 1,
         project_id: "demo",
@@ -112,7 +117,6 @@ describe("orchestrate view-model builders", () => {
       llmKeySource: "",
     });
 
-    expect(params.requestedMode).toBe("single");
     expect(params.resolvedMode).toBe("single");
     expect(params.workspaceConfigSource).toBe("runtime_default");
     expect(params.workspaceValidated).toBe(true);

@@ -87,7 +87,6 @@ export async function handleRunSubcommand(
   }
   const activeSession = session as OrchestrateSessionState;
   const latestSummary = runnableSummary.summary;
-  const requestedMode = latestSummary.content.requested_mode;
   const taskId = buildTaskId(latestSummary.content.task_goal);
 
   const runtimeStatsForWorkspace = await params.loadExecutionRuntime();
@@ -168,7 +167,6 @@ export async function handleRunSubcommand(
     const createdMeta = await params.readJsonOrDefault<Record<string, unknown>>(createdMetaPath, {});
     await params.writeJsonAtomic(createdMetaPath, {
       ...createdMeta,
-      requested_mode: requestedMode,
       orchestrate_session_key: sessionKeyForRun,
       summary_id: latestSummary.summary_id,
       summary_path: summaryPath,
@@ -207,7 +205,7 @@ export async function handleRunSubcommand(
     const planned = await params.runWhitelistedScript({
       repoRoot: params.repoRoot,
       scriptName: "planner_entry",
-      args: ["--task-dir", taskDirArg, "--requested-mode", requestedMode],
+      args: ["--task-dir", taskDirArg],
     });
     scriptTrace.push(`planner_entry: ${params.trimOutput(planned.stdout || planned.stderr || "ok")}`);
 
@@ -260,7 +258,6 @@ export async function handleRunSubcommand(
       params.loadExecutionRuntime(),
       params.getExternalRunnerStatus(),
     ]);
-    const requestedModeResolved = String(meta.requested_mode ?? requestedMode);
     const runnerSnapshot = params.runtime.getRunnerSnapshot();
     const consistencySnapshot = params.runtime.getConsistencySnapshot();
     const planningDecisionMeta =
@@ -299,11 +296,6 @@ export async function handleRunSubcommand(
       runner_max_parallel: runnerSnapshot.runnerMaxParallel,
       logical_threads: runtimeStats.logicalThreads,
       effective_worker_threads: runtimeStats.effectiveWorkerThreads,
-      requested_mode: requestedModeResolved,
-      resolved_mode: String(
-        meta.execution_mode ??
-          (Array.isArray(meta.children) && meta.children.length > 0 ? "multi" : "single"),
-      ),
       decision_source: String(planningDecisionMeta.decision_source ?? "manual_override"),
       decision_reason: String(planningDecisionMeta.decision_reason ?? ""),
       split_units_planned: Number(meta.split_units_planned ?? 1),
@@ -401,7 +393,6 @@ export async function handleRunSubcommand(
         runnerBatchSize: runnerSnapshot.runnerBatchSize,
         runnerMaxParallel: runnerSnapshot.runnerMaxParallel,
         runtimeStats,
-        requestedModeDefault: requestedModeResolved,
         meta,
         workspaceConfigSourceDefault: workspaceResolved.source,
         workspaceValidatedDefault: workspaceResolved.validated,

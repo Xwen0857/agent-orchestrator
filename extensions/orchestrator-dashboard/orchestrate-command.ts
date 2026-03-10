@@ -8,6 +8,7 @@ export const ORCHESTRATE_SCRIPT_MAP = {
   create_task_from_strategy: "agent-orchestrator/scripts/create_task_from_strategy.sh",
   planner_entry: "agent-orchestrator/scripts/planner_entry.sh",
   planner_apply_amendment_batch: "agent-orchestrator/scripts/planner_apply_amendment_batch.sh",
+  runtime_resume_replan: "agent-orchestrator/scripts/planner_resume_hard_replan.sh",
   planner_prepare_single_worker: "agent-orchestrator/scripts/planner_prepare_single_worker.sh",
   planner_prepare_workers: "agent-orchestrator/scripts/planner_prepare_workers.sh",
   transition_task_state: "agent-orchestrator/scripts/transition_task_state.sh",
@@ -16,6 +17,7 @@ export const ORCHESTRATE_SCRIPT_MAP = {
   orchestrate_multi_once: "agent-orchestrator/scripts/orchestrate_multi_once.sh",
   agent_dispatch: "agent-orchestrator/scripts/agent_dispatch.sh",
   append_task_event: "agent-orchestrator/scripts/append_task_event.sh",
+  kb_submit_candidate: "agent-orchestrator/scripts/kb_submit_candidate.sh",
   kb_import_from_workspace: "agent-orchestrator/scripts/kb_import_from_workspace.sh",
 } as const;
 
@@ -41,7 +43,7 @@ export type OrchestrateStrategy = {
     max_execution_time_seconds: number;
   };
   execution: {
-    requested_mode: "auto" | "single" | "multi";
+    requested_mode: "auto";
   };
   summary_input?: {
     task_goal: string;
@@ -50,7 +52,6 @@ export type OrchestrateStrategy = {
     notes: string[];
   };
   planning_decision?: {
-    requested_mode: "auto" | "single" | "multi";
     resolved_mode: "single" | "multi";
     decision_source: "manual_override" | "planner_llm" | "planner_rules_fallback";
     decision_reason: string;
@@ -119,7 +120,6 @@ export function normalizeFreeTextToStrategy(params: {
   owner?: string;
   riskLevel?: StrategyRiskLevel;
   budget?: { max_token_cost: number; max_execution_time_seconds: number };
-  requestedMode?: "auto" | "single" | "multi";
   workspace?: {
     project_id: string;
     workspace_root: string;
@@ -150,7 +150,7 @@ export function normalizeFreeTextToStrategy(params: {
       max_execution_time_seconds: 3600,
     },
     execution: {
-      requested_mode: params.requestedMode ?? "auto",
+      requested_mode: "auto",
     },
     workspace: params.workspace,
     created_at: toIsoUtc(now),
@@ -210,7 +210,6 @@ export function buildStrategyFromSummary(params: {
         Number(params.summary.budget?.max_execution_time_seconds ?? 3600),
       ),
     },
-    requestedMode: params.summary.requested_mode ?? "auto",
     workspace: params.workspace,
   });
 

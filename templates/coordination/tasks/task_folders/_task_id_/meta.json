@@ -38,5 +38,63 @@
   "knowledge_refs": [
     "kb_20260213-023138_85586"
   ],
+  "worker_runtime": {
+    "schema_version": "worker-runtime-view-v1",
+    "assembled_at": "",
+    "role_type": "worker-delivery",
+    "dispatch_action": "",
+    "lane": "",
+    "mode": "local_threads",
+    "refinement_scope": "",
+    "runtime_view_path": "worker_runtime_view.json",
+    "cluster_id": ""
+  },
+  "worker_budget": {
+    "budget_lane": "fast",
+    "fast_token_budget": 50000,
+    "degraded_token_budget": 75000,
+    "reclaim_threshold": 100000,
+    "token_cost_used": 0,
+    "max_token_cost": 50000,
+    "updated_at": ""
+  },
+  "worker_convergence": {
+    "convergence_class": "not_converged",
+    "convergence_confidence": 0,
+    "progress_delta": 0,
+    "remaining_work_estimate": "",
+    "reclaim_reason": "",
+    "reported_at": ""
+  },
+  "task_cluster": {
+    "cluster_id": "",
+    "memberships": [],
+    "workspace_root": "",
+    "mailbox_path": "",
+    "archive_path": "",
+    "mailbox_counters": {
+      "published": 0,
+      "acknowledged": 0,
+      "consumed": 0,
+      "archived": 0
+    },
+    "mailbox_last_expired_at": "",
+    "updated_at": ""
+  },
+  "runtime_worker_control": {
+    "budget_status": "fast",
+    "reclaim_requested_at": "",
+    "rebuild_ready": false,
+    "rebuild_reason": "",
+    "last_rebuilt_at": ""
+  },
+  "keeper_feedback": {
+    "feedback_types": [],
+    "last_feedback_at": "",
+    "reason": "",
+    "submitted_candidates": [],
+    "submitted_fingerprints": [],
+    "last_submitted_at": ""
+  },
   "last_error": ""
 }

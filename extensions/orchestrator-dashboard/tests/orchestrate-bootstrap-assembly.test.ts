@@ -48,6 +48,7 @@ describe("orchestrate-bootstrap-assembly", () => {
         runnerBatchSize: 4,
         runnerMaxParallel: 2,
         runnerTasksRootArg: "templates/coordination/tasks/task_folders",
+        executionRuntimePath: "/repo/execution_runtime.json",
       },
       io: {
         fileExists: vi.fn(async () => false),

@@ -1,6 +1,8 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import type { ExternalRunnerSnapshot } from "./orchestrate-response.js";
+import { runSchedulerKernelTick } from "./orchestrate-scheduler-kernel.js";
+import { extractSchedulerConfig } from "./orchestrate-scheduler-contract.js";
 
 const RUNNER_DEGRADED_THRESHOLD = 3;
 
@@ -42,10 +44,12 @@ export type BuildRunnerRuntimeControllerParams = {
     runnerBatchSize: number;
     runnerMaxParallel: number;
     runnerTasksRootArg: string;
+    executionRuntimePath: string;
   };
   io: {
     fileExists: (targetPath: string) => Promise<boolean>;
     readText: (targetPath: string) => Promise<string>;
+    readJsonOrDefault: <T>(targetPath: string, fallback: T) => Promise<T>;
     runScript: (
       scriptPath: string,
       args: string[],
@@ -54,7 +58,13 @@ export type BuildRunnerRuntimeControllerParams = {
   };
   runWhitelistedScript: (params: {
     repoRoot: string;
-    scriptName: "orchestrate_multi_once";
+    scriptName:
+      | "orchestrate_multi_once"
+      | "transition_task_state"
+      | "append_task_event"
+      | "dashboard_summary"
+      | "agent_dispatch"
+      | "kb_submit_candidate";
     args: string[];
     timeoutMs?: number;
     maxBufferBytes?: number;
@@ -94,6 +104,19 @@ export function buildRunnerRuntimeController(
   let runnerLastTickError = "";
   let runnerConsecutiveFailures = 0;
   let runnerStatus: "started" | "already_running" | "degraded" = "degraded";
+  let kernelRollbackActive = false;
+  let kernelConsecutiveTickFailures = 0;
+  let previousQueueDepth = 0;
+  let queueGrowthConsecutiveBreaches = 0;
+  let schedulerRuntimeConsistency: "ok" | "mismatch" | "unknown" = "unknown";
+
+  void params.startupConsistencyPromise
+    .then((result) => {
+      schedulerRuntimeConsistency = normalizeSchedulerRuntimeConsistency(result);
+    })
+    .catch(() => {
+      schedulerRuntimeConsistency = "unknown";
+    });
 
   const getRunnerLockMtime = async (): Promise<string> => {
     try {
@@ -245,21 +268,46 @@ export function buildRunnerRuntimeController(
     }
     runnerTickRunning = true;
     try {
-      const onceResult = await params.runWhitelistedScript({
-        repoRoot: params.repoRoot,
-        scriptName: "orchestrate_multi_once",
-        args: [
-          params.cfg.runnerTasksRootArg,
-          "--mode",
-          params.cfg.runnerExecutionMode,
-          "--max-parallel",
-          String(params.cfg.runnerMaxParallel),
-          "--max-tasks",
-          String(params.cfg.runnerBatchSize),
-        ],
-        timeoutMs: 60_000,
-        maxBufferBytes: 2 * 1024 * 1024,
-      });
+      const runtimeRaw = await params.io.readJsonOrDefault<Record<string, unknown>>(
+        params.cfg.executionRuntimePath,
+        {},
+      );
+      const schedulerCfg = extractSchedulerConfig(runtimeRaw);
+      // kernel_v2 is the only schedulable mainline path; legacy_script exists only for rollback.
+      const useKernelPath = !kernelRollbackActive;
+      let onceResult: { stdout: string; stderr: string };
+      if (useKernelPath) {
+        const result = await runSchedulerKernelTick({
+          repoRoot: params.repoRoot,
+          tasksRootArg: params.cfg.runnerTasksRootArg,
+          mode: params.cfg.runnerExecutionMode,
+          maxParallel: params.cfg.runnerMaxParallel,
+          maxTasks: params.cfg.runnerBatchSize,
+          runtimeConsistency: schedulerRuntimeConsistency,
+          runWhitelistedScript: params.runWhitelistedScript,
+          emitEvent: params.emitEvent,
+        });
+        onceResult = {
+          stdout: JSON.stringify(result),
+          stderr: "",
+        };
+      } else {
+        onceResult = await params.runWhitelistedScript({
+          repoRoot: params.repoRoot,
+          scriptName: "orchestrate_multi_once",
+          args: [
+            params.cfg.runnerTasksRootArg,
+            "--mode",
+            params.cfg.runnerExecutionMode,
+            "--max-parallel",
+            String(params.cfg.runnerMaxParallel),
+            "--max-tasks",
+            String(params.cfg.runnerBatchSize),
+          ],
+          timeoutMs: 60_000,
+          maxBufferBytes: 2 * 1024 * 1024,
+        });
+      }
       runnerLastTickAt = new Date().toISOString();
       runnerLastTickResult = "ok";
       runnerLastTickError = "";
@@ -275,6 +323,8 @@ export function buildRunnerRuntimeController(
       await params.emitEvent("orchestrate.runner.tick_ok", {
         interval_sec: params.cfg.runnerIntervalSec,
         execution_mode: params.cfg.runnerExecutionMode,
+        scheduler_path: useKernelPath ? "kernel_v2" : "legacy_script",
+        runtime_consistency: schedulerRuntimeConsistency,
         batch_size: params.cfg.runnerBatchSize,
         max_parallel: params.cfg.runnerMaxParallel,
         output: params.trimOutput(onceResult.stdout || onceResult.stderr || "ok", 240),
@@ -292,6 +342,45 @@ export function buildRunnerRuntimeController(
         acl_denied_count: asPositiveInt(parsedTick.acl_denied_count, 0),
         acl_last_denied_at: asString(parsedTick.acl_last_denied_at, ""),
       });
+
+      if (useKernelPath) {
+        const softFailed = asPositiveInt(parsedTick.failed, 0) > 0 || asString(parsedTick.status, "ok") !== "ok";
+        kernelConsecutiveTickFailures = softFailed ? kernelConsecutiveTickFailures + 1 : 0;
+
+        const queueDepth = asPositiveInt(parsedTick.queue_depth, 0);
+        const queueGrowth = Math.max(0, queueDepth - previousQueueDepth);
+        previousQueueDepth = queueDepth;
+        if (queueGrowth > schedulerCfg.rollback_guard.max_queue_depth_growth) {
+          queueGrowthConsecutiveBreaches += 1;
+        } else {
+          queueGrowthConsecutiveBreaches = 0;
+        }
+
+        const successRateRaw = Number(parsedTick.dispatch_success_rate);
+        const successRate = Number.isFinite(successRateRaw) ? successRateRaw : 1;
+        const successRateBreached = successRate < schedulerCfg.rollback_guard.min_dispatch_success_rate;
+        const maxFailuresBreached =
+          kernelConsecutiveTickFailures >= schedulerCfg.rollback_guard.max_consecutive_tick_failures;
+        const queueGrowthBreached = queueGrowthConsecutiveBreaches >= 3;
+
+        if (maxFailuresBreached || successRateBreached || queueGrowthBreached) {
+          kernelRollbackActive = true;
+          await params.emitEvent("orchestrate.scheduler.rollback_triggered", {
+            reason: maxFailuresBreached
+              ? "consecutive_tick_failures"
+              : successRateBreached
+                ? "dispatch_success_rate_below_threshold"
+                : "queue_depth_growth_breach",
+            max_consecutive_tick_failures: schedulerCfg.rollback_guard.max_consecutive_tick_failures,
+            min_dispatch_success_rate: schedulerCfg.rollback_guard.min_dispatch_success_rate,
+            max_queue_depth_growth: schedulerCfg.rollback_guard.max_queue_depth_growth,
+            observed_consecutive_tick_failures: kernelConsecutiveTickFailures,
+            observed_dispatch_success_rate: successRate,
+            observed_queue_depth_growth: queueGrowth,
+          });
+        }
+      }
+
       if (parsedTick.throttled === true) {
         await params.emitEvent("orchestrate.parallel.throttled", {
           requested_parallel: params.cfg.runnerMaxParallel,
@@ -419,4 +508,15 @@ export function buildRunnerRuntimeController(
     }),
     kickoffOnStartup,
   };
+}
+
+export function normalizeSchedulerRuntimeConsistency(value: unknown): "ok" | "mismatch" | "unknown" {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "unknown";
+  }
+  const candidate = String((value as { runtimeConsistency?: unknown }).runtimeConsistency ?? "").trim();
+  if (candidate === "ok" || candidate === "mismatch") {
+    return candidate;
+  }
+  return "unknown";
 }

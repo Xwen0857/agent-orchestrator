@@ -87,6 +87,9 @@ export async function handleOrchestrateCommand({
     amend: async () => ({
       text: await commandHandlers.handleAmend(parsed.payload),
     }),
+    resume: async () => ({
+      text: await commandHandlers.handleResume(parsed.payload),
+    }),
     run: async () => ({
       text: await commandHandlers.handleRun(parsed.payload, ctx),
     }),

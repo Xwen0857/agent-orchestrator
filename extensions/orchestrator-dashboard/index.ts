@@ -99,6 +99,7 @@ const orchestratorDashboardPlugin = {
         runnerBatchSize: cfg.runnerBatchSize,
         runnerMaxParallel: cfg.runnerMaxParallel,
         runnerTasksRootArg,
+        executionRuntimePath: paths.executionRuntime,
       },
       io,
       helpers: {

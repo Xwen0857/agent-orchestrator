@@ -107,7 +107,7 @@ describe("orchestrate-session pure logic", () => {
     expect(next.draft.project_id).toBe("prj_demo");
     expect(next.draft.workspace_root).toBe("apps/demo");
     expect(next.draft.risk_level).toBe("HIGH");
-    expect(next.draft.requested_mode).toBe("multi");
+    expect(next.draft.requested_mode).toBe("auto");
     expect(next.draft.budget).toEqual({
       max_token_cost: 1200,
       max_execution_time_seconds: 90,
@@ -175,7 +175,7 @@ describe("orchestrate-session pure logic", () => {
           max_token_cost: 50000,
           max_execution_time_seconds: 3600,
         },
-        requested_mode: "auto",
+      requested_mode: "auto",
         constraints: [],
         deliverables: [],
         notes: [],
@@ -227,7 +227,7 @@ describe("orchestrate-session pure logic", () => {
           max_token_cost: 50000,
           max_execution_time_seconds: 3600,
         },
-        requested_mode: "auto",
+      requested_mode: "auto",
         constraints: [],
         deliverables: [],
         notes: [],
@@ -291,6 +291,52 @@ describe("orchestrate-session pure logic", () => {
           max_execution_time_seconds: 120,
         },
         requested_mode: "auto",
+        constraints: ["keep"],
+        deliverables: ["tests"],
+        notes: ["note"],
+      },
+    });
+  });
+
+  it("keeps summary normalization stable when legacy requested_mode is absent", () => {
+    const summary = normalizeOrchestrateSummary(
+      {
+        summary_id: "sum_missing_mode",
+        created_at: "2026-02-28T09:05:00.000Z",
+        version: 2,
+        status: "confirmed",
+        content: {
+          task_goal: "ship it",
+          project_id: "prj_demo",
+          workspace_root: "apps/demo",
+          risk_level: "LOW",
+          budget: {
+            max_token_cost: 800,
+            max_execution_time_seconds: 120,
+          },
+          constraints: ["keep"],
+          deliverables: ["tests"],
+          notes: ["note"],
+        },
+      },
+      { now: "2026-02-28T09:05:00.000Z" },
+    );
+
+    expect(summary).toEqual({
+      summary_id: "sum_missing_mode",
+      created_at: "2026-02-28T09:05:00.000Z",
+      version: 2,
+      status: "confirmed",
+      content: {
+        task_goal: "ship it",
+        project_id: "prj_demo",
+        workspace_root: "apps/demo",
+        risk_level: "LOW",
+        budget: {
+          max_token_cost: 800,
+          max_execution_time_seconds: 120,
+        },
+        requested_mode: undefined,
         constraints: ["keep"],
         deliverables: ["tests"],
         notes: ["note"],
@@ -412,6 +458,65 @@ describe("orchestrate-session pure logic", () => {
     ]);
   });
 
+  it("keeps session normalization runnable when legacy requested_mode is absent", () => {
+    const fallback = buildEmptyOrchestrateSession(
+      {
+        sessionKey: "fallback-session",
+        channel: "unknown",
+        senderId: "unknown",
+      },
+      { now: "2026-02-28T09:10:00.000Z" },
+    );
+
+    const session = normalizeOrchestrateSession(
+      {
+        session_key: "sess_missing_mode",
+        channel: "chat",
+        sender_id: "user-1",
+        status: "SUMMARY_READY",
+        draft: {
+          task_goal: "build feature",
+          risk_level: "LOW",
+          constraints: ["one"],
+          deliverables: ["artifact"],
+          notes: ["note"],
+          budget: {
+            max_token_cost: 700,
+            max_execution_time_seconds: 120,
+          },
+        },
+        latest_summary: {
+          summary_id: "sum_2",
+          created_at: "2026-02-28T09:13:00.000Z",
+          version: 2,
+          status: "confirmed",
+          content: {
+            task_goal: "ship",
+            risk_level: "LOW",
+            budget: {
+              max_token_cost: 700,
+              max_execution_time_seconds: 120,
+            },
+          },
+        },
+        last_run: {
+          task_id: "task_1",
+          started_at: "2026-02-28T09:14:00.000Z",
+          summary_id: "sum_2",
+        },
+      },
+      {
+        fallbackSession: fallback,
+        now: "2026-02-28T09:15:00.000Z",
+      },
+    );
+
+    expect(session.draft.requested_mode).toBe("auto");
+    expect(session.latest_summary?.content.requested_mode).toBeUndefined();
+    const runnable = getRunnableSummary(session);
+    expect(runnable.ok).toBe(true);
+  });
+
   it("extracts the latest usable user message from mixed message payloads", () => {
     expect(
       extractLatestUserMessage([
@@ -470,7 +575,8 @@ describe("orchestrate-session pure logic", () => {
     expect(context).toContain("- workspace_root: apps/demo");
     expect(context).toContain("- risk_level: HIGH");
     expect(context).toContain("- budget: 1200,90");
-    expect(context).toContain("- requested_mode: multi");
+    expect(context).toContain("- planner_ingress: auto-only");
+    expect(context).toContain("- initial_split_decision: planner-managed");
     expect(context).toContain("- deliverables: RUNBOOK.md, tests");
   });
 });

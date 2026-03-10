@@ -1,5 +1,6 @@
 import { handleAmendSubcommand } from "../orchestrate-amend-command.js";
 import { handleIntakeSubcommand } from "../orchestrate-intake-command.js";
+import { renderTaskAmendmentMirror } from "../orchestrate-task-amendment.js";
 import { describe, expect, it, vi } from "vitest";
 
 describe("legacy orchestrate command handlers", () => {
@@ -30,29 +31,61 @@ describe("legacy orchestrate command handlers", () => {
   });
 
   it("persists amendments through the handler", async () => {
-    const writes: Array<{ path: string; payload: string }> = [];
+    const textWrites: Array<{ path: string; payload: string }> = [];
+    const jsonWrites: Array<{ path: string; payload: unknown }> = [];
     const emitEvent = vi.fn(async () => {});
+    const runWhitelistedScript = vi.fn(async () => ({ stdout: "", stderr: "" }));
+    const readJsonOrDefault = async <T,>(_target: string, fallback: T): Promise<T> =>
+      ({
+        ...(fallback as Record<string, unknown>),
+        id: "task_demo",
+        requirement_amendment_count: 2,
+      } as T);
 
     const text = await handleAmendSubcommand({
       payload: "task_demo add websocket smoke test",
       repoRoot: "/repo",
       taskFoldersRoot: "/repo/tasks",
       io: {
-        fileExists: vi.fn(async (targetPath: string) => targetPath.endsWith("/meta.json")),
-        readText: vi.fn(async () => ""),
+        fileExists: vi.fn(
+          async (targetPath: string) =>
+            targetPath.endsWith("/meta.json") || targetPath.endsWith("/amendments.md"),
+        ),
+        readJsonOrDefault,
+        readText: vi.fn(async () => "# Amendments\n"),
+        writeJsonAtomic: vi.fn(async (targetPath: string, payload: unknown) => {
+          jsonWrites.push({ path: targetPath, payload });
+        }),
         writeTextAtomic: vi.fn(async (targetPath: string, payload: string) => {
-          writes.push({ path: targetPath, payload });
+          textWrites.push({ path: targetPath, payload });
         }),
       },
-      runWhitelistedScript: vi.fn(async () => ({ stdout: "", stderr: "" })),
+      runWhitelistedScript,
       emitEvent,
     });
 
     expect(text).toContain("amendment accepted");
-    expect(writes).toHaveLength(1);
-    expect(writes[0]?.path).toBe("/repo/tasks/task_demo/amendments.md");
-    expect(writes[0]?.payload).toContain("# Amendments");
-    expect(writes[0]?.payload).toContain("add websocket smoke test");
+    expect(runWhitelistedScript).toHaveBeenCalledTimes(1);
+    expect(jsonWrites).toHaveLength(1);
+    expect(jsonWrites[0]?.path).toBe("/repo/tasks/task_demo/meta.json");
+    expect(jsonWrites[0]?.payload).toMatchObject({
+      latest_requirement_amendment: "add websocket smoke test",
+      requirement_amendment_count: 3,
+    });
+    expect(textWrites).toHaveLength(1);
+    expect(textWrites[0]?.path).toBe("/repo/tasks/task_demo/amendments.md");
+    expect(textWrites[0]?.payload).toContain("add websocket smoke test");
     expect(emitEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders legacy amendment mirror from authority entries", () => {
+    const rendered = renderTaskAmendmentMirror({
+      currentText: "# Amendments\n",
+      amendedAt: "2026-03-10T00:00:00Z",
+      amendment: "add websocket smoke test",
+    });
+
+    expect(rendered).toContain("# Amendments");
+    expect(rendered).toContain("- 2026-03-10T00:00:00Z add websocket smoke test");
   });
 });

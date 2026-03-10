@@ -6,7 +6,6 @@ describe("orchestrate-command transport boundaries", () => {
     const strategy = buildStrategyFromSummary({
       summary: {
         task_goal: "Ship websocket calculator",
-        requested_mode: "multi",
         constraints: ["python only", "use local port"],
         deliverables: ["source", "tests"],
         notes: ["prefer websocket transport"],
@@ -19,7 +18,7 @@ describe("orchestrate-command transport boundaries", () => {
     });
 
     expect(strategy.goal).toBe("Ship websocket calculator");
-    expect(strategy.execution.requested_mode).toBe("multi");
+    expect(strategy.execution.requested_mode).toBe("auto");
     expect(strategy.summary_input).toEqual({
       task_goal: "Ship websocket calculator",
       constraints: ["python only", "use local port"],
