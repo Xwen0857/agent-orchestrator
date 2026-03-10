@@ -62,6 +62,7 @@ type CreateOrchestrateCommandHandlersParams = {
     repoRoot: string;
     scriptName:
       | "create_task_from_strategy"
+      | "planner_apply_amendment_batch"
       | "planner_entry"
       | "transition_task_state"
       | "dashboard_summary"
@@ -94,10 +95,17 @@ export function createOrchestrateCommandHandlers(
       handleSessionSubcommand({
         subcommand,
         ctx,
+        repoRoot: params.repoRoot,
+        taskFoldersRoot: params.paths.taskFoldersRoot,
         paths: params.statePaths,
         io: stateIo,
         readOrchestrateSession: params.readOrchestrateSession,
         writeOrchestrateSession: params.writeOrchestrateSession,
+        runWhitelistedScript: async (input) =>
+          params.runWhitelistedScript({
+            ...input,
+            scriptName: "planner_apply_amendment_batch",
+          }),
         emitEvent: params.emitEvent,
       }),
     handlePath: async (payload: string, senderId?: string): Promise<string> => {

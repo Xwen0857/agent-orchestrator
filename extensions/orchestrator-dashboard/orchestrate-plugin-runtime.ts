@@ -55,6 +55,7 @@ export type BuildOrchestratePluginRuntimeParams = {
     httpNames: HttpDeps["pathsByName"];
     eventsPath: string;
     overview: OverviewDeps["paths"];
+    entryAgentDecodeContractPath: string;
   };
   state: {
     readOrchestrateSession: (sessionKey: string) => Promise<OrchestrateSessionState | null>;
@@ -115,6 +116,8 @@ export function buildOrchestratePluginRuntimeInput(params: {
         pathState: bootstrap.paths.pathState,
         orchestrateSessionsDir: bootstrap.paths.orchestrateSessionsDir,
         orchestrateRequestsDir: bootstrap.paths.orchestrateRequestsDir,
+        orchestrateAmendmentsDir: bootstrap.paths.orchestrateAmendmentsDir,
+        orchestrateAmendmentBatchesDir: bootstrap.paths.orchestrateAmendmentBatchesDir,
       },
       command: {
         orchestrateRequestsDir: bootstrap.paths.orchestrateRequestsDir,
@@ -141,6 +144,7 @@ export function buildOrchestratePluginRuntimeInput(params: {
         dashboardJson: bootstrap.paths.dashboardJson,
         systemHealthJson: bootstrap.paths.systemHealthJson,
       },
+      entryAgentDecodeContractPath: bootstrap.paths.entryAgentDecodeContract,
     },
     state: {
       ...assembly.state,
@@ -172,8 +176,18 @@ export function buildOrchestratePluginRuntime(
   httpDeps: HttpDeps;
   overviewDeps: OverviewDeps;
   hookDeps: {
+    repoRoot: string;
+    taskFoldersRoot: string;
+    entryAgentDecodeContractPath: string;
     readOrchestrateSession: BuildOrchestratePluginRuntimeParams["state"]["readOrchestrateSession"];
     writeOrchestrateSession: BuildOrchestratePluginRuntimeParams["state"]["writeOrchestrateSession"];
+    statePaths: OrchestrateStatePaths;
+    io: Pick<
+      BuildOrchestratePluginRuntimeParams["io"],
+      "fileExists" | "readJsonOrDefault" | "readText" | "writeJsonAtomic"
+    >;
+    runWhitelistedScript: BuildOrchestratePluginRuntimeParams["helpers"]["runWhitelistedScript"];
+    emitEvent: BuildOrchestratePluginRuntimeParams["helpers"]["emitEvent"];
   };
 } {
   // Keep IO adapters shared so every entrypoint reads and writes the same files
@@ -250,8 +264,22 @@ export function buildOrchestratePluginRuntime(
       renderOrchestrateHelp: uiRenderHelpers.renderOrchestrateHelp,
     },
     hookDeps: {
+      repoRoot: params.repoRoot,
+      taskFoldersRoot: params.paths.command.taskFoldersRoot,
+      entryAgentDecodeContractPath: params.paths.entryAgentDecodeContractPath,
       readOrchestrateSession: stateAccess.readOrchestrateSession,
       writeOrchestrateSession: stateAccess.writeOrchestrateSession,
+      statePaths: {
+        ...params.paths.statePaths,
+      },
+      io: {
+        fileExists: params.io.fileExists,
+        readJsonOrDefault: sharedReadJsonOrDefault,
+        readText: params.io.readText,
+        writeJsonAtomic: params.io.writeJsonAtomic,
+      },
+      runWhitelistedScript: params.helpers.runWhitelistedScript,
+      emitEvent: params.helpers.emitEvent,
     },
     httpDeps: {
       api: params.api,

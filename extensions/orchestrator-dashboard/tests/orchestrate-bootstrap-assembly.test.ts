@@ -25,6 +25,8 @@ describe("orchestrate-bootstrap-assembly", () => {
         pathState: "/repo/path_state.json",
         orchestrateSessionsDir: "/repo/sessions",
         orchestrateRequestsDir: "/repo/requests",
+        orchestrateAmendmentsDir: "/repo/amendments",
+        orchestrateAmendmentBatchesDir: "/repo/batches",
         plannerCurrent: "/repo/current.md",
         plannerProperties: "/repo/properties.md",
         auditPolicy: "/repo/audit.json",

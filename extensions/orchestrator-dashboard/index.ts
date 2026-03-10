@@ -141,8 +141,16 @@ const orchestratorDashboardPlugin = {
       return handleBeforeAgentStartHook({
         event,
         ctx,
+        repoRoot,
+        taskFoldersRoot: pluginRuntime.hookDeps.taskFoldersRoot,
+        entryAgentDecodeContractPath: pluginRuntime.hookDeps.entryAgentDecodeContractPath,
         readOrchestrateSession: pluginRuntime.hookDeps.readOrchestrateSession,
         writeOrchestrateSession: pluginRuntime.hookDeps.writeOrchestrateSession,
+        statePaths: pluginRuntime.hookDeps.statePaths,
+        io: pluginRuntime.hookDeps.io,
+        runWhitelistedScript: pluginRuntime.hookDeps.runWhitelistedScript,
+        getConsistencySnapshot: bootstrapAssembly.controllers.consistency.getSnapshot,
+        emitEvent: pluginRuntime.hookDeps.emitEvent,
       });
     });
 

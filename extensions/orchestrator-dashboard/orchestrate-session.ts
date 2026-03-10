@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
+import type { EntryActionRoute } from "./orchestrate-entry-action-contract.js";
 
 export type OrchestrateSubcommand =
   | "run"
@@ -24,6 +25,18 @@ export type OrchestrateConversationStatus =
   | "SUMMARY_READY"
   | "RUNNING"
   | "CLOSED";
+
+export type OrchestrateReceptionistState = {
+  active: boolean;
+  mode: "guided_intake";
+  last_briefing_at: string;
+  pending_questions: string[];
+  amendment_queue_open: boolean;
+  action_route: EntryActionRoute;
+  action_target_task_id: string | null;
+  clarification_required: boolean;
+  last_action_at: string;
+};
 
 export type OrchestrateSummary = {
   summary_id: string;
@@ -58,6 +71,7 @@ export type OrchestrateSessionState = {
     active: boolean;
     mode: "conversation_capture";
   };
+  receptionist: OrchestrateReceptionistState;
   draft: {
     goal_raw: string;
     task_goal: string;
@@ -188,6 +202,20 @@ function mergeUnique(base: string[], incoming: string[]): string[] {
   return [...new Set([...base, ...incoming].filter(Boolean))];
 }
 
+function buildDefaultReceptionistState(now: string): OrchestrateReceptionistState {
+  return {
+    active: true,
+    mode: "guided_intake",
+    last_briefing_at: now,
+    pending_questions: [],
+    amendment_queue_open: false,
+    action_route: "intake_new_task",
+    action_target_task_id: null,
+    clarification_required: false,
+    last_action_at: now,
+  };
+}
+
 export function appendSessionHistory(
   session: OrchestrateSessionState,
   entry: OrchestrateSessionState["history"][number],
@@ -273,6 +301,7 @@ export function buildEmptyOrchestrateSession(
       active: true,
       mode: "conversation_capture",
     },
+    receptionist: buildDefaultReceptionistState(now),
     draft: {
       goal_raw: "",
       task_goal: "",
@@ -473,6 +502,7 @@ export function normalizeOrchestrateSession(
   const now = options.now ?? new Date().toISOString();
   const draftRaw = asRecord(record.draft) ?? {};
   const lastRunRaw = asRecord(record.last_run) ?? {};
+  const receptionistRaw = asRecord(record.receptionist) ?? {};
   const status = normalizeString(record.status, "ACTIVE_DRAFTING");
   const historyRaw = Array.isArray(record.history) ? record.history : [];
 
@@ -503,6 +533,47 @@ export function normalizeOrchestrateSession(
       active: true,
       mode: "conversation_capture",
     },
+    receptionist: (() => {
+      const routeRaw = normalizeString(receptionistRaw.action_route, "");
+      const actionRoute: EntryActionRoute =
+        routeRaw === "amend_existing_task" ||
+        routeRaw === "clarify_target" ||
+        routeRaw === "intake_new_task"
+          ? routeRaw
+          : (fallback.receptionist?.action_route ?? "intake_new_task");
+      return {
+        active:
+          typeof receptionistRaw.active === "boolean"
+            ? receptionistRaw.active
+            : (fallback.receptionist?.active ?? true),
+        mode: "guided_intake",
+        last_briefing_at: normalizeString(
+          receptionistRaw.last_briefing_at,
+          fallback.receptionist?.last_briefing_at || now,
+        ),
+        pending_questions: normalizeStringList(receptionistRaw.pending_questions),
+        amendment_queue_open:
+          typeof receptionistRaw.amendment_queue_open === "boolean"
+            ? receptionistRaw.amendment_queue_open
+            : (fallback.receptionist?.amendment_queue_open ?? false),
+        action_route: actionRoute,
+        action_target_task_id: (() => {
+          const value = normalizeString(
+            receptionistRaw.action_target_task_id,
+            fallback.receptionist?.action_target_task_id ?? "",
+          );
+          return value || null;
+        })(),
+        clarification_required:
+          typeof receptionistRaw.clarification_required === "boolean"
+            ? receptionistRaw.clarification_required
+            : (fallback.receptionist?.clarification_required ?? false),
+        last_action_at: normalizeString(
+          receptionistRaw.last_action_at,
+          fallback.receptionist?.last_action_at || now,
+        ),
+      };
+    })(),
     draft: {
       goal_raw: normalizeString(draftRaw.goal_raw, fallback.draft.goal_raw),
       task_goal: normalizeString(draftRaw.task_goal, fallback.draft.task_goal),
@@ -564,11 +635,16 @@ export function extractLatestUserMessage(messages: unknown[] | undefined): strin
   return "";
 }
 
-export function buildEntryAgentContext(session: OrchestrateSessionState): string {
-  return [
-    "You are currently acting as the orchestrate entry agent for an active /orchestrate session.",
+export function buildEntryAgentContext(
+  session: OrchestrateSessionState,
+  metaBlock?: string,
+  decodeContractBlock?: string,
+): string {
+  const lines = [
+    "You are currently acting as the orchestrate receptionist for an active /orchestrate session.",
     "Do not execute the task. Do not create tasks automatically.",
     "Your job is to help the user refine task goals and orchestration configuration.",
+    "Planner remains isolated from raw user conversation. Only structured summaries and amendment batches flow downstream.",
     "Ask concise follow-up questions only when important details are missing.",
     "Remind the user to run /orchestrate summary when they want a structured recap.",
     "Current draft:",
@@ -579,7 +655,14 @@ export function buildEntryAgentContext(session: OrchestrateSessionState): string
     `- budget: ${session.draft.budget.max_token_cost},${session.draft.budget.max_execution_time_seconds}`,
     `- requested_mode: ${session.draft.requested_mode}`,
     `- deliverables: ${session.draft.deliverables.join(", ") || "(none)"}`,
-  ].join("\n");
+  ];
+  if (decodeContractBlock?.trim()) {
+    lines.push("", decodeContractBlock.trim());
+  }
+  if (metaBlock?.trim()) {
+    lines.push("", metaBlock.trim());
+  }
+  return lines.join("\n");
 }
 
 export function validateRunCommandPayload(payload: string): string | null {

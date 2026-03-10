@@ -12,6 +12,8 @@ export type OrchestrateStatePaths = {
   pathState: string;
   orchestrateSessionsDir: string;
   orchestrateRequestsDir: string;
+  orchestrateAmendmentsDir: string;
+  orchestrateAmendmentBatchesDir: string;
 };
 
 export type OrchestrateStateIo = {
@@ -86,4 +88,3 @@ export async function writeSummarySnapshotStore(params: {
   });
   return summaryPath;
 }
-

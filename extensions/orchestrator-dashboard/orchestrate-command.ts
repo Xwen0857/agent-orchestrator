@@ -7,6 +7,7 @@ const execFileAsync = promisify(execFile);
 export const ORCHESTRATE_SCRIPT_MAP = {
   create_task_from_strategy: "agent-orchestrator/scripts/create_task_from_strategy.sh",
   planner_entry: "agent-orchestrator/scripts/planner_entry.sh",
+  planner_apply_amendment_batch: "agent-orchestrator/scripts/planner_apply_amendment_batch.sh",
   planner_prepare_single_worker: "agent-orchestrator/scripts/planner_prepare_single_worker.sh",
   planner_prepare_workers: "agent-orchestrator/scripts/planner_prepare_workers.sh",
   transition_task_state: "agent-orchestrator/scripts/transition_task_state.sh",

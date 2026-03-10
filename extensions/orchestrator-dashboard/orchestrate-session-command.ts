@@ -1,3 +1,12 @@
+import { extractRuntimeReplanSignals } from "./orchestrate-runtime-contract.js";
+import {
+  handleReceptionistBriefing,
+  handleReceptionistStart,
+} from "./orchestrate-receptionist-command.js";
+import {
+  readPlannerAmendmentWatermarkV2Store,
+  readReceptionistAmendmentQueueStore,
+} from "./orchestrate-receptionist-state.js";
 import {
   appendSessionHistory,
   buildEmptyOrchestrateSession,
@@ -9,6 +18,7 @@ import {
 } from "./orchestrate-session.js";
 import type { OrchestrateStateIo, OrchestrateStatePaths } from "./orchestrate-state.js";
 import { writeSummarySnapshotStore } from "./orchestrate-state.js";
+import path from "node:path";
 
 type SessionCommandContext = {
   channel?: string;
@@ -20,13 +30,40 @@ type SessionCommandContext = {
 
 type SessionCommandSubcommand = Extract<ParsedOrchestrateArgs["subcommand"], "start" | "session" | "stop" | "summary">;
 
+function extractReplanBriefingFields(meta: Record<string, unknown> | null): {
+  status: string;
+  impact: string;
+  workerPolicy: string;
+  executionStatus: string;
+} | null {
+  const replan = extractRuntimeReplanSignals(meta);
+  if (!replan.status && !replan.impact && !replan.worker_policy && !replan.execution_status) {
+    return null;
+  }
+  return {
+    status: replan.status ?? "(none)",
+    impact: replan.impact ?? "(none)",
+    workerPolicy: replan.worker_policy ?? "(none)",
+    executionStatus: replan.execution_status ?? "(none)",
+  };
+}
+
 export async function handleSessionSubcommand(params: {
   subcommand: SessionCommandSubcommand;
   ctx: SessionCommandContext;
+  repoRoot: string;
+  taskFoldersRoot: string;
   paths: OrchestrateStatePaths;
   io: OrchestrateStateIo;
   readOrchestrateSession: (sessionKey: string) => Promise<OrchestrateSessionState | null>;
   writeOrchestrateSession: (next: OrchestrateSessionState) => Promise<void>;
+  runWhitelistedScript: (params: {
+    repoRoot: string;
+    scriptName: "planner_apply_amendment_batch";
+    args: string[];
+    timeoutMs?: number;
+    maxBufferBytes?: number;
+  }) => Promise<{ stdout: string; stderr: string }>;
   emitEvent: (type: string, payload: Record<string, unknown>) => Promise<void>;
 }): Promise<string> {
   const sessionKey = resolveConversationSessionKey(params.ctx);
@@ -56,13 +93,7 @@ export async function handleSessionSubcommand(params: {
       channel: params.ctx.channel ?? "unknown",
       sender_id: params.ctx.senderId ?? "unknown",
     });
-    return [
-      "orchestrate mode activated",
-      renderSessionSummary(created),
-      "",
-      "send normal messages to describe the task and configuration",
-      "use /orchestrate summary when you want a structured recap",
-    ].join("\n");
+    return handleReceptionistStart(created);
   }
 
   const session = await params.readOrchestrateSession(sessionKey);
@@ -83,6 +114,11 @@ export async function handleSessionSubcommand(params: {
       ...session,
       status: "CLOSED",
       updated_at: new Date().toISOString(),
+      receptionist: {
+        ...session.receptionist,
+        active: false,
+        amendment_queue_open: false,
+      },
     };
     await params.writeOrchestrateSession(next);
     await params.emitEvent("orchestrate.session.closed", {
@@ -90,6 +126,51 @@ export async function handleSessionSubcommand(params: {
       reason: "user_stop",
     });
     return "orchestrate session closed";
+  }
+
+  if (
+    params.subcommand === "summary" &&
+    session.status === "RUNNING" &&
+    session.receptionist.action_route !== "intake_new_task"
+  ) {
+    const now = new Date().toISOString();
+    const taskMetaPath = session.last_run ? path.join(params.taskFoldersRoot, session.last_run.task_id, "meta.json") : "";
+    const queue = session.last_run
+      ? await readReceptionistAmendmentQueueStore({
+          io: params.io,
+          paths: params.paths,
+          sessionKey,
+          taskId: session.last_run.task_id,
+        })
+      : null;
+    const taskMeta =
+      taskMetaPath && (await params.io.fileExists(taskMetaPath))
+        ? await params.io.readJsonOrDefault<Record<string, unknown>>(taskMetaPath, {})
+        : null;
+    const amendmentWatermark = session.last_run
+      ? await readPlannerAmendmentWatermarkV2Store({
+          io: params.io,
+          paths: params.paths,
+          sessionKey,
+          taskId: session.last_run.task_id,
+        })
+      : null;
+    const nextSession: OrchestrateSessionState = {
+      ...session,
+      updated_at: now,
+      receptionist: {
+        ...session.receptionist,
+        last_briefing_at: now,
+        amendment_queue_open: Boolean(queue && queue.items.length > 0),
+      },
+    };
+    await params.writeOrchestrateSession(nextSession);
+    return handleReceptionistBriefing({
+      session: nextSession,
+      queue,
+      amendmentWatermark,
+      replan: extractReplanBriefingFields(taskMeta),
+    });
   }
 
   if (!session.draft.task_goal.trim()) {
@@ -118,6 +199,10 @@ export async function handleSessionSubcommand(params: {
       ...session,
       status: "SUMMARY_READY",
       updated_at: new Date().toISOString(),
+      receptionist: {
+        ...session.receptionist,
+        last_briefing_at: new Date().toISOString(),
+      },
       latest_summary: summary,
     },
     {
@@ -141,6 +226,8 @@ export async function handleSessionSubcommand(params: {
     version: summary.version,
   });
   return [
+    handleReceptionistBriefing({ session: next }),
+    "",
     `summary_id: ${summary.summary_id}`,
     `summary_version: ${String(summary.version)}`,
     `task_goal: ${summary.content.task_goal}`,
@@ -148,7 +235,8 @@ export async function handleSessionSubcommand(params: {
     `workspace_root: ${summary.content.workspace_root || "(default)"}`,
     `risk_level: ${summary.content.risk_level}`,
     `budget: ${summary.content.budget.max_token_cost},${summary.content.budget.max_execution_time_seconds}`,
-    `requested_mode: ${summary.content.requested_mode}`,
+    "planner_ingress: auto-only",
+    "initial_split_decision: planner-managed",
     `deliverables: ${summary.content.deliverables.join(", ") || "(none)"}`,
     `constraints: ${summary.content.constraints.join(", ") || "(none)"}`,
     `summary_path: ${summaryPath}`,

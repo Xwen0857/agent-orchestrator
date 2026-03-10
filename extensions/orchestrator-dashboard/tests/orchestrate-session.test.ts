@@ -464,7 +464,7 @@ describe("orchestrate-session pure logic", () => {
 
     const context = buildEntryAgentContext(session);
 
-    expect(context).toContain("You are currently acting as the orchestrate entry agent");
+    expect(context).toContain("You are currently acting as the orchestrate receptionist");
     expect(context).toContain("- task_goal: Ship dashboard");
     expect(context).toContain("- project_id: prj_demo");
     expect(context).toContain("- workspace_root: apps/demo");

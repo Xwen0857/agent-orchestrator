@@ -29,6 +29,8 @@ function buildPaths(): OrchestrateStatePaths {
     pathState: "/tmp/path_state.json",
     orchestrateSessionsDir: "/tmp/sessions",
     orchestrateRequestsDir: "/tmp/requests",
+    orchestrateAmendmentsDir: "/tmp/amendments",
+    orchestrateAmendmentBatchesDir: "/tmp/batches",
   };
 }
 

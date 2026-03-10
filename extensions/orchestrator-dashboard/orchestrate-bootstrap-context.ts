@@ -24,6 +24,8 @@ export type OrchestratorBootstrapContext = {
     systemHealthJson: string;
     orchestrateRequestsDir: string;
     orchestrateSessionsDir: string;
+    orchestrateAmendmentsDir: string;
+    orchestrateAmendmentBatchesDir: string;
     pathState: string;
     taskFoldersRoot: string;
     plannerCurrent: string;
@@ -33,6 +35,7 @@ export type OrchestratorBootstrapContext = {
     snapshotScript: string;
     rollbackScript: string;
     agentRuntimeConfig: string;
+    entryAgentDecodeContract: string;
     executionRuntime: string;
   };
   runnerLockPath: string;
@@ -61,6 +64,8 @@ export function buildOrchestratorBootstrapContext(params: {
     systemHealthJson: resolvePath(repoRoot, cfg.systemHealthJsonPath),
     orchestrateRequestsDir: resolvePath(repoRoot, defaults.requestsPath),
     orchestrateSessionsDir: resolvePath(repoRoot, "templates/coordination/orchestrator/sessions"),
+    orchestrateAmendmentsDir: path.join(dataDir, "receptionist", "amendments"),
+    orchestrateAmendmentBatchesDir: path.join(dataDir, "receptionist", "batches"),
     pathState: resolvePath(repoRoot, "templates/coordination/orchestrator/requests/path_state.json"),
     taskFoldersRoot: resolvePath(repoRoot, defaults.tasksRoot),
     plannerCurrent: resolvePath(repoRoot, cfg.plannerCurrentPath),
@@ -70,6 +75,10 @@ export function buildOrchestratorBootstrapContext(params: {
     snapshotScript: resolvePath(repoRoot, cfg.snapshotScriptPath),
     rollbackScript: resolvePath(repoRoot, cfg.rollbackScriptPath),
     agentRuntimeConfig: resolvePath(repoRoot, cfg.agentRuntimeConfigPath),
+    entryAgentDecodeContract: resolvePath(
+      repoRoot,
+      "templates/coordination/orchestrator/entry_agent_decode_contract.md",
+    ),
     executionRuntime: resolvePath(repoRoot, "templates/coordination/orchestrator/execution_runtime.json"),
   };
 

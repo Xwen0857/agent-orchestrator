@@ -29,6 +29,8 @@ describe("orchestrate plugin runtime composer", () => {
           systemHealthJson: "/repo/system_health.json",
           orchestrateRequestsDir: "/repo/requests",
           orchestrateSessionsDir: "/repo/sessions",
+          orchestrateAmendmentsDir: "/repo/.state/receptionist/amendments",
+          orchestrateAmendmentBatchesDir: "/repo/.state/receptionist/batches",
           pathState: "/repo/path_state.json",
           taskFoldersRoot: "/repo/tasks",
           plannerCurrent: "/repo/current",
@@ -38,6 +40,7 @@ describe("orchestrate plugin runtime composer", () => {
           snapshotScript: "/repo/snapshot.sh",
           rollbackScript: "/repo/rollback.sh",
           agentRuntimeConfig: "/repo/agent_runtime.json",
+          entryAgentDecodeContract: "/repo/entry_agent_decode_contract.md",
           executionRuntime: "/repo/runtime.json",
         },
         runnerLockPath: "/repo/runner.lock",
@@ -110,6 +113,7 @@ describe("orchestrate plugin runtime composer", () => {
     expect(input.paths.statePaths.orchestrateSessionsDir).toBe("/repo/sessions");
     expect(input.paths.httpNames.auditHistory).toBe("/repo/history.ndjson");
     expect(input.paths.eventsPath).toBe("/repo/events.ndjson");
+    expect(input.paths.entryAgentDecodeContractPath).toBe("/repo/entry_agent_decode_contract.md");
     expect(input.configService).toBeDefined();
   });
 
@@ -166,6 +170,8 @@ describe("orchestrate plugin runtime composer", () => {
           pathState: "/repo/path_state.json",
           orchestrateSessionsDir: "/repo/sessions",
           orchestrateRequestsDir: "/repo/requests",
+          orchestrateAmendmentsDir: "/repo/.state/receptionist/amendments",
+          orchestrateAmendmentBatchesDir: "/repo/.state/receptionist/batches",
         },
         command: {
           orchestrateRequestsDir: "/repo/requests",
@@ -193,6 +199,7 @@ describe("orchestrate plugin runtime composer", () => {
           dashboardJson: "/repo/dashboard.json",
           systemHealthJson: "/repo/system_health.json",
         },
+        entryAgentDecodeContractPath: "/repo/entry_agent_decode_contract.md",
       },
       state: {
         readOrchestrateSession: vi.fn(),
@@ -276,6 +283,8 @@ describe("orchestrate plugin runtime composer", () => {
     expect(runtime.commandDeps.runtime.ensureRunnerStarted).toBe(runnerController.ensureRunnerStarted);
     expect(runtime.hookDeps.readOrchestrateSession).toBe(runtime.commandDeps.readOrchestrateSession);
     expect(runtime.hookDeps.writeOrchestrateSession).toBe(runtime.commandDeps.writeOrchestrateSession);
+    expect(runtime.hookDeps.entryAgentDecodeContractPath).toBe("/repo/entry_agent_decode_contract.md");
+    expect(runtime.hookDeps.io.readText).toBeDefined();
 
     expect(runtime.httpDeps.api).toBe(api);
     expect(runtime.httpDeps.cfg.requireGatewayAuth).toBe(true);
