@@ -292,7 +292,7 @@ describe("orchestrate-session pure logic", () => {
     });
   });
 
-  it("keeps summary normalization stable when legacy requested_mode is absent", () => {
+  it("keeps summary normalization stable when optional mode fields are absent", () => {
     const summary = normalizeOrchestrateSummary(
       {
         summary_id: "sum_missing_mode",
@@ -449,7 +449,7 @@ describe("orchestrate-session pure logic", () => {
     ]);
   });
 
-  it("keeps session normalization runnable when legacy requested_mode is absent", () => {
+  it("keeps session normalization runnable when optional mode fields are absent", () => {
     const fallback = buildEmptyOrchestrateSession(
       {
         sessionKey: "fallback-session",
@@ -504,61 +504,6 @@ describe("orchestrate-session pure logic", () => {
 
     const runnable = getRunnableSummary(session);
     expect(runnable.ok).toBe(true);
-  });
-
-  it("drops legacy requested_mode during summary and session normalization", () => {
-    const fallback = buildEmptyOrchestrateSession(
-      {
-        sessionKey: "fallback-session",
-        channel: "unknown",
-        senderId: "unknown",
-      },
-      { now: "2026-02-28T09:10:00.000Z" },
-    );
-
-    const summary = normalizeOrchestrateSummary(
-      {
-        summary_id: "sum_legacy_mode",
-        created_at: "2026-02-28T09:05:00.000Z",
-        version: 2,
-        status: "confirmed",
-        content: {
-          task_goal: "ship it",
-          requested_mode: "multi",
-        },
-      },
-      { now: "2026-02-28T09:05:00.000Z" },
-    );
-    const session = normalizeOrchestrateSession(
-      {
-        session_key: "sess_legacy_mode",
-        channel: "chat",
-        sender_id: "user-1",
-        status: "SUMMARY_READY",
-        draft: {
-          task_goal: "build feature",
-          requested_mode: "multi",
-        },
-        latest_summary: {
-          summary_id: "sum_legacy_mode",
-          created_at: "2026-02-28T09:05:00.000Z",
-          version: 2,
-          status: "confirmed",
-          content: {
-            task_goal: "ship it",
-            requested_mode: "single",
-          },
-        },
-      },
-      {
-        fallbackSession: fallback,
-        now: "2026-02-28T09:15:00.000Z",
-      },
-    );
-
-    expect(summary?.content).not.toHaveProperty("requested_mode");
-    expect(session.draft).not.toHaveProperty("requested_mode");
-    expect(session.latest_summary?.content).not.toHaveProperty("requested_mode");
   });
 
   it("extracts the latest usable user message from mixed message payloads", () => {

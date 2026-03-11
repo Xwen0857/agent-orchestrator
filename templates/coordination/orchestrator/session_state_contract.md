@@ -34,5 +34,4 @@ Primary schemas:
 - Unknown fields must be ignored by consumers.
 - New required fields require schema version bump.
 - Session state is only the authority for session-local draft and receptionist capture state.
-- Older session payloads may still include `draft.requested_mode`; consumers may accept it on read for compatibility, but normalization must drop it and session normalized shape must not carry mode authority.
 - Running-task requirement amendments must not use session files or `amendments.md` as authority; task-folder authority remains `meta.json` + `log.ndjson`.
