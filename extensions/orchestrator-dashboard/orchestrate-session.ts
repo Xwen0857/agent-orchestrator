@@ -39,10 +39,6 @@ export type OrchestrateReceptionistState = {
   last_action_at: string;
 };
 
-// Legacy compatibility hint carried through older session/summary payloads.
-// Planner mode authority lives in planner decision + runtime replan contracts.
-export type LegacyRequestedMode = "auto" | "single" | "multi";
-
 export type OrchestrateSummary = {
   summary_id: string;
   created_at: string;
@@ -57,7 +53,6 @@ export type OrchestrateSummary = {
       max_token_cost: number;
       max_execution_time_seconds: number;
     };
-    requested_mode?: LegacyRequestedMode;
     constraints: string[];
     deliverables: string[];
     notes: string[];
@@ -87,7 +82,6 @@ export type OrchestrateSessionState = {
       max_token_cost: number;
       max_execution_time_seconds: number;
     };
-    requested_mode?: LegacyRequestedMode;
     constraints: string[];
     deliverables: string[];
     notes: string[];
@@ -170,17 +164,6 @@ function normalizeRiskLevel(value: unknown, fallback: "LOW" | "MEDIUM" | "HIGH")
     return normalized;
   }
   return "MEDIUM";
-}
-
-function normalizeRequestedMode(
-  value: unknown,
-  fallback: LegacyRequestedMode = "auto",
-): LegacyRequestedMode {
-  const normalized = normalizeString(value, fallback);
-  if (normalized === "single" || normalized === "multi") {
-    return normalized;
-  }
-  return "auto";
 }
 
 function normalizeStringList(value: unknown): string[] {
@@ -321,7 +304,6 @@ export function buildEmptyOrchestrateSession(
         max_token_cost: 50000,
         max_execution_time_seconds: 3600,
       },
-      requested_mode: "auto",
       constraints: [],
       deliverables: [],
       notes: [],
@@ -444,7 +426,6 @@ export function buildSummaryFromDraft(
         max_token_cost: session.draft.budget.max_token_cost,
         max_execution_time_seconds: session.draft.budget.max_execution_time_seconds,
       },
-      requested_mode: session.draft.requested_mode,
       constraints: [...session.draft.constraints],
       deliverables: [...session.draft.deliverables],
       notes: [...session.draft.notes],
@@ -487,10 +468,6 @@ export function normalizeOrchestrateSummary(
         max_token_cost: 50000,
         max_execution_time_seconds: 3600,
       }),
-      requested_mode:
-        typeof contentRaw.requested_mode === "string"
-          ? normalizeRequestedMode(contentRaw.requested_mode)
-          : undefined,
       constraints: normalizeStringList(contentRaw.constraints),
       deliverables: normalizeStringList(contentRaw.deliverables),
       notes: normalizeStringList(contentRaw.notes),
@@ -586,10 +563,6 @@ export function normalizeOrchestrateSession(
       workspace_root: normalizeString(draftRaw.workspace_root, fallback.draft.workspace_root),
       risk_level: normalizeRiskLevel(draftRaw.risk_level, fallback.draft.risk_level),
       budget: normalizeBudget(draftRaw.budget, fallback.draft.budget),
-      requested_mode:
-        typeof draftRaw.requested_mode === "string"
-          ? normalizeRequestedMode(draftRaw.requested_mode, fallback.draft.requested_mode ?? "auto")
-          : fallback.draft.requested_mode,
       constraints: normalizeStringList(draftRaw.constraints),
       deliverables: normalizeStringList(draftRaw.deliverables),
       notes: normalizeStringList(draftRaw.notes),

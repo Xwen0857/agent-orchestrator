@@ -37,7 +37,6 @@ describe("orchestrate view-model builders", () => {
     const params = buildTaskStatusResponseParams({
       taskId: "task_1",
       meta: {
-        requested_mode: "auto",
         execution_mode: "multi",
         split_units_planned: 5,
         planning_decision: { decision_source: "planner_rules_fallback" },

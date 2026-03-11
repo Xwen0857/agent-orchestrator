@@ -125,7 +125,6 @@ describe("orchestrate-state persistence adapter", () => {
             max_token_cost: 50000,
             max_execution_time_seconds: 3600,
           },
-          requested_mode: "auto",
           constraints: [],
           deliverables: [],
           notes: [],

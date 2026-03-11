@@ -91,7 +91,6 @@ export function buildRunSuccessResponseParams(input: {
   runnerBatchSize: number;
   runnerMaxParallel: number;
   runtimeStats: RuntimeStatsInput;
-  requestedModeDefault?: string;
   meta: Record<string, unknown>;
   workspaceConfigSourceDefault: string;
   workspaceValidatedDefault: boolean;

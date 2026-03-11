@@ -38,9 +38,6 @@ describe("orchestrate-agent-runtime", () => {
           max_token_cost: 50000,
           max_execution_time_seconds: 3600,
         },
-        execution: {
-          requested_mode: "auto",
-        },
         created_at: "2026-03-02T00:00:00Z",
         status: "drafted",
       },

@@ -64,7 +64,6 @@ describe("orchestrate-session pure logic", () => {
       updated_at: "2026-02-28T08:00:00.000Z",
       draft: {
         risk_level: "MEDIUM",
-        requested_mode: "auto",
         budget: {
           max_token_cost: 50000,
           max_execution_time_seconds: 3600,
@@ -107,7 +106,6 @@ describe("orchestrate-session pure logic", () => {
     expect(next.draft.project_id).toBe("prj_demo");
     expect(next.draft.workspace_root).toBe("apps/demo");
     expect(next.draft.risk_level).toBe("HIGH");
-    expect(next.draft.requested_mode).toBe("auto");
     expect(next.draft.budget).toEqual({
       max_token_cost: 1200,
       max_execution_time_seconds: 90,
@@ -175,7 +173,6 @@ describe("orchestrate-session pure logic", () => {
           max_token_cost: 50000,
           max_execution_time_seconds: 3600,
         },
-      requested_mode: "auto",
         constraints: [],
         deliverables: [],
         notes: [],
@@ -227,7 +224,6 @@ describe("orchestrate-session pure logic", () => {
           max_token_cost: 50000,
           max_execution_time_seconds: 3600,
         },
-      requested_mode: "auto",
         constraints: [],
         deliverables: [],
         notes: [],
@@ -267,7 +263,6 @@ describe("orchestrate-session pure logic", () => {
             max_token_cost: "abc",
             max_execution_time_seconds: "120",
           },
-          requested_mode: "weird",
           constraints: ["keep", 42, ""],
           deliverables: [null, "tests"],
           notes: ["note"],
@@ -290,7 +285,6 @@ describe("orchestrate-session pure logic", () => {
           max_token_cost: 50000,
           max_execution_time_seconds: 120,
         },
-        requested_mode: "auto",
         constraints: ["keep"],
         deliverables: ["tests"],
         notes: ["note"],
@@ -336,7 +330,6 @@ describe("orchestrate-session pure logic", () => {
           max_token_cost: 800,
           max_execution_time_seconds: 120,
         },
-        requested_mode: undefined,
         constraints: ["keep"],
         deliverables: ["tests"],
         notes: ["note"],
@@ -365,7 +358,6 @@ describe("orchestrate-session pure logic", () => {
         draft: {
           task_goal: " build feature ",
           risk_level: "LOW",
-          requested_mode: "multi",
           constraints: ["one", "", 2],
           deliverables: ["artifact", null],
           notes: [false, "note"],
@@ -421,7 +413,6 @@ describe("orchestrate-session pure logic", () => {
       draft: {
         task_goal: "build feature",
         risk_level: "LOW",
-        requested_mode: "multi",
         constraints: ["one"],
         deliverables: ["artifact"],
         notes: ["note"],
@@ -511,10 +502,63 @@ describe("orchestrate-session pure logic", () => {
       },
     );
 
-    expect(session.draft.requested_mode).toBe("auto");
-    expect(session.latest_summary?.content.requested_mode).toBeUndefined();
     const runnable = getRunnableSummary(session);
     expect(runnable.ok).toBe(true);
+  });
+
+  it("drops legacy requested_mode during summary and session normalization", () => {
+    const fallback = buildEmptyOrchestrateSession(
+      {
+        sessionKey: "fallback-session",
+        channel: "unknown",
+        senderId: "unknown",
+      },
+      { now: "2026-02-28T09:10:00.000Z" },
+    );
+
+    const summary = normalizeOrchestrateSummary(
+      {
+        summary_id: "sum_legacy_mode",
+        created_at: "2026-02-28T09:05:00.000Z",
+        version: 2,
+        status: "confirmed",
+        content: {
+          task_goal: "ship it",
+          requested_mode: "multi",
+        },
+      },
+      { now: "2026-02-28T09:05:00.000Z" },
+    );
+    const session = normalizeOrchestrateSession(
+      {
+        session_key: "sess_legacy_mode",
+        channel: "chat",
+        sender_id: "user-1",
+        status: "SUMMARY_READY",
+        draft: {
+          task_goal: "build feature",
+          requested_mode: "multi",
+        },
+        latest_summary: {
+          summary_id: "sum_legacy_mode",
+          created_at: "2026-02-28T09:05:00.000Z",
+          version: 2,
+          status: "confirmed",
+          content: {
+            task_goal: "ship it",
+            requested_mode: "single",
+          },
+        },
+      },
+      {
+        fallbackSession: fallback,
+        now: "2026-02-28T09:15:00.000Z",
+      },
+    );
+
+    expect(summary?.content).not.toHaveProperty("requested_mode");
+    expect(session.draft).not.toHaveProperty("requested_mode");
+    expect(session.latest_summary?.content).not.toHaveProperty("requested_mode");
   });
 
   it("extracts the latest usable user message from mixed message payloads", () => {
@@ -560,7 +604,6 @@ describe("orchestrate-session pure logic", () => {
     session.draft.project_id = "prj_demo";
     session.draft.workspace_root = "apps/demo";
     session.draft.risk_level = "HIGH";
-    session.draft.requested_mode = "multi";
     session.draft.deliverables = ["RUNBOOK.md", "tests"];
     session.draft.budget = {
       max_token_cost: 1200,

@@ -42,9 +42,6 @@ export type OrchestrateStrategy = {
     max_token_cost: number;
     max_execution_time_seconds: number;
   };
-  execution: {
-    requested_mode: "auto";
-  };
   summary_input?: {
     task_goal: string;
     constraints: string[];
@@ -149,9 +146,6 @@ export function normalizeFreeTextToStrategy(params: {
       max_token_cost: 50000,
       max_execution_time_seconds: 3600,
     },
-    execution: {
-      requested_mode: "auto",
-    },
     workspace: params.workspace,
     created_at: toIsoUtc(now),
     status: "drafted",
@@ -166,7 +160,6 @@ export function buildStrategyFromSummary(params: {
       max_token_cost?: number;
       max_execution_time_seconds?: number;
     };
-    requested_mode?: "auto" | "single" | "multi";
     constraints?: string[];
     deliverables?: string[];
     notes?: string[];
