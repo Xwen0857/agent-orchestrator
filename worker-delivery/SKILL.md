@@ -7,19 +7,24 @@ description: 负责按 planner 指令完成代码或文档交付，提交结构�
 
 ## V2 基线（强制优先）
 1. worker-delivery 进入任务前必须读取 `templates/coordination/tasks/task_folders/<task_id>/meta.json`，并确认状态为 `ASSIGNED` 或 `IN_PROGRESS`。
-2. worker 负责 `ASSIGNED -> IN_PROGRESS -> TESTING` 的推进；每次推进必须记录到 `log.ndjson`。
-3. 执行中累计消耗必须写入 `meta.consumption` 并同步事件日志；超过预算 80% 记录 `WARN_BUDGET`，达到 100% 必须转 `BLOCKED_PENDING_APPROVAL`。
+2. `ASSIGNED -> IN_PROGRESS` 由 `scheduler-ops` 推进；worker 只消费已装配的 `worker_runtime_view.json` 并提交执行结果。`IN_PROGRESS -> TESTING` 的推进仍由编排流控制并记录到 `log.ndjson`。
+3. token budget lane、reclaim、rebuild、keeper candidate routing 由 `scheduler-ops` / runtime control 拥有；worker 不直接执行 budget hard-stop 或写 `BLOCKED_PENDING_APPROVAL`。
 4. 发生歧义时必须写 `clarification_request.md` 并将状态置为 `BLOCKED_AWAITING_CLARIFICATION`，不得静默等待。
 5. 运行态 `worker_tasks/<worker_id>_tasks.md` 位于仓外状态目录；`templates/coordination/tasks/<worker_id>_tasks.md` 仅作兼容镜像，不作为真实状态读写依据。
-6. worker 开工前应执行知识库检索并将命中条目回链到 `meta.knowledge_refs`。
-7. 当 `keeper_enabled=true` 时，worker 不得直接写入 `knowledge-base/entries`，新增经验必须先提交候选到 keeper 队列；当 `keeper_enabled=false` 时可按旧路径直接写入。
+6. worker 当前只回写 convergence、局部协作消息和交付证据；`meta.consumption` 与知识库检索仍由其他运行时路径负责，未在 deterministic worker 内实现时不得在文档中假定其已存在。
+7. 当 `keeper_enabled=true` 时，worker 不得直接写入 `knowledge-base/entries`；经验候选由 `scheduler-ops` 基于 runtime signal 提交到 keeper 队列。
+8. `dispatch.role_type` 表示编排运行角色（如 `worker-delivery`、`tester-ephemeral`）；实施用途角色的正式分类由 `implementation_topology.coarse_template_role` 表示（如 `frontend`、`backend`、`database`），`implementation_topology.role_layer` 仅保留为兼容投影，二者不得与编排角色混用。
+9. lifecycle policy 由 `scheduler-ops` / runtime assembler 选择并投影为 `worker_runtime_view.json.lifecycle_governance`；worker 只消费该视图以及其中的 `workerStage` 下行分配，不拥有治理真相，也不持久化 policy authority。
+10. wrapper 通过 `ORCH_WORKER_STAGE_*` 环境变量把 `workerStage` contract 投影给 handler；这些变量只是运行注入接口，不代表独立 authority。
+11. `implementation_topology.coarse_template_role` 是 topology config 下行后的正式 coarse template classification；`implementation_topology.role_layer` 仅保留为兼容投影。`selected_template` 是由 topology 驱动自动解析出的细模板结果，而不是 worker 侧需要重新决策的一层。
 
 ## 核心职责
 1. 根据 `task_id` 与 worker 指令完成实现，确保交付范围不越界。
 2. 产出可复现的交付记录：改动清单、关键命令、结果摘要与风险说明。
-3. 在交付后生成 tester 交接材料，触发临时 tester 验收。
+3. 在交付后向 task-cluster mailbox 发布结构化协作消息，并为 tester 验收保留可消费产物。
 4. 在验收前不得声明完成；验收失败时按反馈进行修复并重新交接。
-5. 持续更新 worker 执行状态，保证 planner 能够读取到最新进度。
+5. 持续回写 `worker_convergence` 与局部协作信号，供 scheduler/ops/keeper 消费。
+6. 所有可离开 `workerStage` 的交付物必须先经过 wrapper export，并形成 `delivery.export-records.json` 供 tester/runtime 后续消费。
 
 ## 输入文件相对路径
 1. `interface.json` 文件路径：项目根目录 `interface.json`。
@@ -48,19 +53,20 @@ description: 负责按 planner 指令完成代码或文档交付，提交结构�
 ## worker交付流程
 1. 读取输入文件并确认本次 `task_id` 的目标、范围、完成标准。
 2. 执行实现并记录关键步骤：改动文件、关键命令、关键输出。
-3. 本地自测并记录结果：通过项、失败项、已知风险与临时规避方案。
-4. 生成交付日志与改动清单，回写 `tasks` 文件中对应任务状态。
-5. 生成 tester 任务文件 `templates/coordination/testers/<run_id>/task.md`，写入测试范围与通过标准。
-6. 生成 tester 交接摘要并通知进入 tester 验收。
+3. 本地自测并记录结果，满足最小 evidence contract：`summary`、`test_command`、`changed_files`、`evidence_notes`；`frontend/backend/infra` 交付还必须提供 `delivery/RUNBOOK.md`。
+4. wrapper 校验 `delivery_manifest`、导出 artifact record，并回写 task folder 内的执行证据与 convergence 摘要。
+5. 向 task-cluster mailbox 发布 tester 可消费的结构化消息。
+6. tester 消费消息、执行验证、归档 mailbox 记录，并更新导出 artifact 的 lifecycle 状态。
 7. 若 tester 返回 `FAIL`，依据 `result.md` 的 `failure_code` 和 `fixes` 修复后重新执行第 3-6 步。
 
 ## 交付约束
 1. 仅允许修改任务授权范围内的代码和文档路径。
-2. 未通过 tester 验收前，任务状态不得标记为 `DONE`。
-3. 必须保留可追溯证据：命令、关键输出、改动清单、风险说明。
-4. 禁止跳过配置约束；若与 `current.md` 冲突，必须先上报 blocker。
-5. 高风险操作必须先通过 audit-guard 审批后执行。
-6. `tasks` 兼容镜像文件由 planner-ops 统一同步，worker-delivery 不直接写入 mirror。
+2. 自由写权限仅存在于当前 `workerStage`；禁止直接写 authority 路径、task-cluster mailbox 文件或 sibling `workerStage`。
+3. 未通过 tester 验收前，任务状态不得标记为 `DONE`。
+4. 必须保留可追溯证据：命令、关键输出、改动清单、风险说明。
+5. 禁止跳过配置约束；若与 `current.md` 冲突，必须先上报 blocker。
+6. 高风险操作必须先通过 audit-guard 审批后执行。
+7. `tasks` 兼容镜像文件由 planner-ops 统一同步，worker-delivery 不直接写入 mirror。
 
 ## 阻塞与异常处理
 1. 发现需求不明确、依赖缺失或权限不足时，立即在交付日志记录 blocker。

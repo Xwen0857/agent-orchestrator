@@ -44,8 +44,9 @@ description: 根据某个 worker 的交接任务创建一次性 tester，执行�
 1. 接收 `run_id` 与 worker 交接任务，初始化一次性 tester。
 2. 按 `task.md` 中 `commands` 和 `pass_criteria` 执行测试。
 3. 生成 `result.md` 与 `result.json`，写入状态、失败码、证据与修复建议。
-4. 回写 worker 任务状态（PASS/FAIL）并记录 tester 日志摘要。
-5. 将结果回传 orchestrator/planner 后终止 tester。
+4. 若本次交接来源于 mailbox + wrapper export，tester 仅消费 exported artifact reference，并在消费/归档后更新 `delivery.export-records.json` 的 lifecycle 状态。
+5. 回写 worker 任务状态（PASS/FAIL）并记录 tester 日志摘要。
+6. 将结果回传 orchestrator/planner 后终止 tester。
 
 ## 测试模式定义
 1. `smoke`：验证最小可运行路径，确保交付产物可启动、可执行或可访问。
@@ -74,6 +75,7 @@ description: 根据某个 worker 的交接任务创建一次性 tester，执行�
 4. failure_code 必须使用标准枚举：`BUILD_FAIL`、`TEST_FAIL`、`SECURITY_FAIL`、`CONTRACT_BREAK`。
 5. 若测试依赖缺失导致无法判定，状态标记 `FAIL` 并在 `fixes` 给出补齐建议。
 6. `tasks` 兼容镜像文件由 planner-ops 统一同步，tester-ephemeral 不直接写入 mirror。
+7. tester 不消费 `workerStage` 临时路径；如需附件或交付物，只能读取 wrapper-exported artifact reference。
 
 ## 异常与回退策略
 1. `task.md` 缺失关键字段时立即终止并返回结构化错误。
