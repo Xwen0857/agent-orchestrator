@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""Suggest overly broad KB entries that may need to be split.
+
+This heuristic scans existing entry markdown, looking for long entries, repeated merged
+candidate accumulation, and large problem/fix sections.
+"""
+
 import json
 import os
 import re
@@ -11,6 +17,7 @@ def read_field(text: str, key: str, default: str = "") -> str:
 
 
 def main() -> int:
+    """Scan entry files, collect split signals, and print JSON suggestions."""
     entries_dir = sys.argv[1] if len(sys.argv) > 1 else "knowledge-base/entries"
     if not os.path.isdir(entries_dir):
         print("[]")

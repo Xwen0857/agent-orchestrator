@@ -18,7 +18,6 @@ describe("orchestrate-command transport boundaries", () => {
     });
 
     expect(strategy.goal).toBe("Ship websocket calculator");
-    expect(strategy.execution.requested_mode).toBe("auto");
     expect(strategy.summary_input).toEqual({
       task_goal: "Ship websocket calculator",
       constraints: ["python only", "use local port"],

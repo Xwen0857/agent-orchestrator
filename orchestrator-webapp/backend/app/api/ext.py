@@ -1,3 +1,4 @@
+"""Extension-management API routes for backend plugins."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,6 +12,7 @@ router = APIRouter(prefix="/api/v1/ext", tags=["extensions"])
 
 @router.get("/plugins")
 def list_plugins(user: UserContext = Depends(resolve_user)) -> dict:
+    """List registered plugins and the supported plugin API version."""
     require_role(user, {Role.viewer, Role.operator, Role.approver})
     svc = get_plugin_registry()
     return {"pluginApiVersion": PLUGIN_API_VERSION, "items": [p.model_dump() for p in svc.list_plugins()]}
@@ -18,6 +20,7 @@ def list_plugins(user: UserContext = Depends(resolve_user)) -> dict:
 
 @router.post("/plugins/register")
 def register_plugin(req: RegisterPluginRequest, user: UserContext = Depends(resolve_user)) -> dict:
+    """Register a plugin manifest, then emit audit and event records for the action."""
     require_role(user, {Role.operator, Role.approver})
     svc = get_plugin_registry()
     try:
@@ -47,6 +50,7 @@ def register_plugin(req: RegisterPluginRequest, user: UserContext = Depends(reso
 
 @router.post("/plugins/{plugin_id}/enable")
 def enable_plugin(plugin_id: str, user: UserContext = Depends(resolve_user)) -> dict:
+    """Enable one registered plugin."""
     require_role(user, {Role.operator, Role.approver})
     svc = get_plugin_registry()
     try:
@@ -58,6 +62,7 @@ def enable_plugin(plugin_id: str, user: UserContext = Depends(resolve_user)) -> 
 
 @router.post("/plugins/{plugin_id}/disable")
 def disable_plugin(plugin_id: str, reason: str = "disabled by operator", user: UserContext = Depends(resolve_user)) -> dict:
+    """Disable one registered plugin with an optional reason."""
     require_role(user, {Role.operator, Role.approver})
     svc = get_plugin_registry()
     try:
@@ -69,6 +74,7 @@ def disable_plugin(plugin_id: str, reason: str = "disabled by operator", user: U
 
 @router.get("/capabilities")
 def capabilities(user: UserContext = Depends(resolve_user)) -> dict:
+    """Return enabled plugin capabilities and permissions."""
     require_role(user, {Role.viewer, Role.operator, Role.approver})
     svc = get_plugin_registry()
     rows = []

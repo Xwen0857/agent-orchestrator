@@ -17,14 +17,14 @@ describe("orchestrate resume command", () => {
       emitEvent,
     });
 
-    expect(text).toContain("runtime recovery requested");
+    expect(text).toContain("hard replan resume triggered");
     expect(runWhitelistedScript).toHaveBeenCalledWith({
       repoRoot: "/repo",
-      scriptName: "runtime_resume_replan",
+      scriptName: "planner_resume_hard_replan",
       args: ["tasks/task_demo"],
     });
     expect(emitEvent).toHaveBeenCalledWith(
-      "orchestrate.task.runtime_recovery_requested",
+      "orchestrate.task.replan_resumed",
       expect.objectContaining({ task_id: "task_demo" }),
     );
   });

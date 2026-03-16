@@ -1,3 +1,8 @@
+"""Plugin hook execution utilities for the backend runtime.
+
+This module validates plugin API compatibility and invokes plugin hook entrypoints
+with bounded resources and JSON payload handling.
+"""
 from __future__ import annotations
 
 import json
@@ -13,16 +18,21 @@ from app.models import PLUGIN_API_VERSION, PluginManifest
 
 @dataclass
 class HookResult:
+    """Normalized result for one plugin hook invocation."""
+
     ok: bool
     payload: dict[str, Any]
     error: str | None = None
 
 
 class PluginRuntime:
+    """Runs backend plugin compatibility checks and subprocess hook calls."""
+
     def __init__(self, repo_root: Path) -> None:
         self.repo_root = repo_root
 
     def check_compat(self, manifest: PluginManifest) -> tuple[bool, str]:
+        """Validate plugin API compatibility against the backend's supported version window."""
         try:
             major, minor, _ = [int(x) for x in manifest.apiVersion.split(".")]
             c_major, c_minor, _ = [int(x) for x in PLUGIN_API_VERSION.split(".")]
@@ -42,10 +52,12 @@ class PluginRuntime:
         payload: dict[str, Any],
         timeout_sec: int = 8,
     ) -> HookResult:
+        """Execute one plugin hook subprocess and normalize its JSON response."""
         if not entry_script.exists():
             return HookResult(ok=False, payload={}, error=f"entrypoint not found: {entry_script}")
 
         def _limit_resources() -> None:
+            """Apply lightweight CPU and memory limits for Unix subprocess hooks."""
             try:
                 import resource
 
@@ -71,6 +83,8 @@ class PluginRuntime:
         if completed.returncode != 0:
             return HookResult(ok=False, payload={}, error=completed.stderr.strip() or "hook failed")
 
+        # Hooks return JSON on stdout; invalid JSON is treated as a plugin failure
+        # rather than leaking a parsing exception to the caller.
         try:
             out = json.loads(completed.stdout.strip() or "{}")
         except json.JSONDecodeError:

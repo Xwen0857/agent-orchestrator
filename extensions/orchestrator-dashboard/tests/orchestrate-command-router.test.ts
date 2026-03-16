@@ -119,7 +119,7 @@ describe("orchestrate command router", () => {
     expect(handlers.handleSession).toHaveBeenCalledWith("summary", expect.objectContaining({ sessionKey: "sess_demo" }));
   });
 
-  it("dispatches runtime recovery through the resume handler", async () => {
+  it("dispatches resume through the dedicated hard-replan resume handler", async () => {
     const handlers = createCommandHandlers();
     const result = await handleOrchestrateCommand({
       ctx: { args: "resume task_demo" },

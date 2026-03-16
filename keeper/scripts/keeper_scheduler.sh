@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Runs keeper on demand or in a timed loop with a single-process scheduler lock.
+# Inputs: mode (`--once` or `--loop`) and optional iteration count for loop mode.
+# Side effects: writes scheduler lock/log files and repeatedly invokes `keeper_run.sh`.
+# Failure model: exits non-zero on invalid args, duplicate scheduler start, or shell-level failures.
+
 MODE="${1:---once}" # --once | --loop
 ITERATIONS="${2:-0}" # used only for --loop; 0 means infinite
 

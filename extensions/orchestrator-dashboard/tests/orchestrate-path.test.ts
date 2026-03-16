@@ -27,9 +27,7 @@ describe("orchestrate-path pure logic", () => {
     expect(validateWorkspaceRootRelative("apps/demo")).toBeNull();
     expect(validateWorkspaceRootRelative("")).toBe("workspace_root is required");
     expect(validateWorkspaceRootRelative("/tmp/demo")).toBe("workspace_root must be relative");
-    expect(validateWorkspaceRootRelative("../demo")).toBe(
-      "workspace_root cannot escape projects root",
-    );
+    expect(validateWorkspaceRootRelative("../demo")).toBe("workspace_root cannot contain ..");
   });
 
   it("normalizes path state and filters invalid project ids", () => {

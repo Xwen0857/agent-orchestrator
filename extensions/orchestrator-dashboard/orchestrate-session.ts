@@ -1,14 +1,22 @@
+/**
+ * Session-state primitives for the `/orchestrate` conversational workflow.
+ * This module owns argument parsing, draft/session normalization, summary generation,
+ * and run precondition checks for the persisted session JSON files.
+ */
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import type { EntryActionRoute } from "./orchestrate-entry-action-contract.js";
 
+/**
+ * Supported `/orchestrate` subcommands recognized by the command router.
+ */
 export type OrchestrateSubcommand =
   | "run"
   | "status"
   | "help"
-  | "resume"
   | "intake"
   | "amend"
+  | "resume"
   | "kb-sync"
   | "path"
   | "start"
@@ -16,11 +24,17 @@ export type OrchestrateSubcommand =
   | "stop"
   | "session";
 
+/**
+ * Parsed command envelope with the recognized subcommand and remaining payload text.
+ */
 export type ParsedOrchestrateArgs = {
   subcommand: OrchestrateSubcommand;
   payload: string;
 };
 
+/**
+ * High-level lifecycle state for one persisted orchestrate conversation.
+ */
 export type OrchestrateConversationStatus =
   | "ACTIVE_DRAFTING"
   | "SUMMARY_READY"
@@ -39,10 +53,9 @@ export type OrchestrateReceptionistState = {
   last_action_at: string;
 };
 
-// Legacy compatibility hint carried through older session/summary payloads.
-// Planner mode authority lives in planner decision + runtime replan contracts.
-export type LegacyRequestedMode = "auto" | "single" | "multi";
-
+/**
+ * Structured snapshot produced from the current draft and later consumed by `/orchestrate run`.
+ */
 export type OrchestrateSummary = {
   summary_id: string;
   created_at: string;
@@ -57,13 +70,16 @@ export type OrchestrateSummary = {
       max_token_cost: number;
       max_execution_time_seconds: number;
     };
-    requested_mode?: LegacyRequestedMode;
     constraints: string[];
     deliverables: string[];
     notes: string[];
   };
 };
 
+/**
+ * Persisted session document that tracks the current draft, user history, summary state,
+ * and the most recent run launched from this conversation.
+ */
 export type OrchestrateSessionState = {
   schema_version: "orchestrate-session-v1";
   session_key: string;
@@ -87,7 +103,6 @@ export type OrchestrateSessionState = {
       max_token_cost: number;
       max_execution_time_seconds: number;
     };
-    requested_mode?: LegacyRequestedMode;
     constraints: string[];
     deliverables: string[];
     notes: string[];
@@ -129,9 +144,9 @@ const ORCHESTRATE_SUBCOMMANDS: ReadonlySet<OrchestrateSubcommand> = new Set([
   "run",
   "status",
   "help",
-  "resume",
   "intake",
   "amend",
+  "resume",
   "kb-sync",
   "path",
   "start",
@@ -170,17 +185,6 @@ function normalizeRiskLevel(value: unknown, fallback: "LOW" | "MEDIUM" | "HIGH")
     return normalized;
   }
   return "MEDIUM";
-}
-
-function normalizeRequestedMode(
-  value: unknown,
-  fallback: LegacyRequestedMode = "auto",
-): LegacyRequestedMode {
-  const normalized = normalizeString(value, fallback);
-  if (normalized === "single" || normalized === "multi") {
-    return normalized;
-  }
-  return "auto";
 }
 
 function normalizeStringList(value: unknown): string[] {
@@ -225,6 +229,9 @@ function buildDefaultReceptionistState(now: string): OrchestrateReceptionistStat
   };
 }
 
+/**
+ * Appends one history entry unless it is a byte-for-byte duplicate of the latest entry.
+ */
 export function appendSessionHistory(
   session: OrchestrateSessionState,
   entry: OrchestrateSessionState["history"][number],
@@ -241,6 +248,10 @@ function createSummaryId(): string {
   return `sum_${Date.now().toString(36)}_${randomUUID().replace(/-/gu, "").slice(0, 6)}`;
 }
 
+/**
+ * Parses the first token as a supported subcommand and returns `help` for empty or
+ * unsupported input so the command layer fails closed.
+ */
 export function parseOrchestrateArgs(argsRaw: string | undefined): ParsedOrchestrateArgs {
   const normalized = (argsRaw ?? "").trim();
   if (!normalized) {
@@ -257,6 +268,9 @@ export function parseOrchestrateArgs(argsRaw: string | undefined): ParsedOrchest
   return { subcommand: "help", payload: "" };
 }
 
+/**
+ * Prefers an explicit command target session key over the ambient session key.
+ */
 export function resolveConversationSessionKey(input: unknown): string {
   if (!input || typeof input !== "object") {
     return "";
@@ -268,6 +282,10 @@ export function resolveConversationSessionKey(input: unknown): string {
   return (commandTargetSessionKey || sessionKey).trim();
 }
 
+/**
+ * Converts a session key into a filesystem-safe stem while preserving uniqueness
+ * through a stable hash suffix.
+ */
 export function buildSessionFileStem(sessionKey: string): string {
   const safe = sessionKey
     .replace(/[^A-Za-z0-9._-]+/gu, "_")
@@ -277,10 +295,16 @@ export function buildSessionFileStem(sessionKey: string): string {
   return `${safe || "session"}_${digest}`;
 }
 
+/**
+ * Builds the stable JSON file path used to persist a session by session key.
+ */
 export function buildSessionFilePath(sessionsDir: string, sessionKey: string): string {
   return path.join(sessionsDir, `${buildSessionFileStem(sessionKey)}.json`);
 }
 
+/**
+ * Builds the per-summary request artifact path used by `/orchestrate summary`.
+ */
 export function buildSummaryFilePath(
   requestsDir: string,
   sessionKey: string,
@@ -289,6 +313,9 @@ export function buildSummaryFilePath(
   return path.join(requestsDir, `${buildSessionFileStem(sessionKey)}.${summaryId}.summary.json`);
 }
 
+/**
+ * Creates the deterministic initial session state used when a conversation starts.
+ */
 export function buildEmptyOrchestrateSession(
   params: {
     sessionKey: string;
@@ -321,7 +348,6 @@ export function buildEmptyOrchestrateSession(
         max_token_cost: 50000,
         max_execution_time_seconds: 3600,
       },
-      requested_mode: "auto",
       constraints: [],
       deliverables: [],
       notes: [],
@@ -331,6 +357,9 @@ export function buildEmptyOrchestrateSession(
   };
 }
 
+/**
+ * Renders a concise human-readable snapshot of the current session draft and summary state.
+ */
 export function renderSessionSummary(session: OrchestrateSessionState): string {
   const latestSummary = session.latest_summary;
   return [
@@ -352,6 +381,10 @@ export function renderSessionSummary(session: OrchestrateSessionState): string {
   ].join("\n");
 }
 
+/**
+ * Merges one user message into the draft, updates inferred fields, and records the
+ * message in history unless it duplicates the latest user entry.
+ */
 export function applyMessageToDraft(
   session: OrchestrateSessionState,
   content: string,
@@ -373,6 +406,8 @@ export function applyMessageToDraft(
   next.draft.goal_raw = next.draft.goal_raw ? `${next.draft.goal_raw}\n${text}` : text;
   next.draft.task_goal = next.draft.task_goal ? `${next.draft.task_goal}\n${text}` : text;
 
+  // These heuristics keep the entry flow usable before structured UI input exists.
+  // They are intentionally permissive and should not be treated as canonical planning data.
   const lower = text.toLowerCase();
   if (/\b(high|critical)\b/u.test(lower) || /高风险/u.test(text)) {
     next.draft.risk_level = "HIGH";
@@ -424,6 +459,9 @@ export function applyMessageToDraft(
   });
 }
 
+/**
+ * Produces a new summary from the current draft and increments the summary version.
+ */
 export function buildSummaryFromDraft(
   session: OrchestrateSessionState,
   options: BuildSummaryOptions = {},
@@ -444,7 +482,6 @@ export function buildSummaryFromDraft(
         max_token_cost: session.draft.budget.max_token_cost,
         max_execution_time_seconds: session.draft.budget.max_execution_time_seconds,
       },
-      requested_mode: session.draft.requested_mode,
       constraints: [...session.draft.constraints],
       deliverables: [...session.draft.deliverables],
       notes: [...session.draft.notes],
@@ -452,6 +489,10 @@ export function buildSummaryFromDraft(
   };
 }
 
+/**
+ * Normalizes arbitrary JSON into a usable summary shape and falls back to safe defaults
+ * for invalid fields instead of rejecting the entire document.
+ */
 export function normalizeOrchestrateSummary(
   raw: unknown,
   options: { now?: string } = {},
@@ -487,10 +528,6 @@ export function normalizeOrchestrateSummary(
         max_token_cost: 50000,
         max_execution_time_seconds: 3600,
       }),
-      requested_mode:
-        typeof contentRaw.requested_mode === "string"
-          ? normalizeRequestedMode(contentRaw.requested_mode)
-          : undefined,
       constraints: normalizeStringList(contentRaw.constraints),
       deliverables: normalizeStringList(contentRaw.deliverables),
       notes: normalizeStringList(contentRaw.notes),
@@ -498,6 +535,10 @@ export function normalizeOrchestrateSummary(
   };
 }
 
+/**
+ * Normalizes a persisted session file and drops invalid nested state back to the provided
+ * fallback session shape so command handlers can keep operating on corrupt input.
+ */
 export function normalizeOrchestrateSession(
   raw: unknown,
   options: NormalizeSessionOptions,
@@ -507,10 +548,11 @@ export function normalizeOrchestrateSession(
   const now = options.now ?? new Date().toISOString();
   const draftRaw = asRecord(record.draft) ?? {};
   const lastRunRaw = asRecord(record.last_run) ?? {};
-  const receptionistRaw = asRecord(record.receptionist) ?? {};
   const status = normalizeString(record.status, "ACTIVE_DRAFTING");
   const historyRaw = Array.isArray(record.history) ? record.history : [];
 
+  // Normalize history rows individually so malformed entries do not poison the
+  // entire session document.
   const history: OrchestrateSessionState["history"] = historyRaw
     .filter((row) => row && typeof row === "object")
     .map((row) => {
@@ -539,43 +581,42 @@ export function normalizeOrchestrateSession(
       mode: "conversation_capture",
     },
     receptionist: (() => {
+      const receptionistRaw = asRecord(record.receptionist) ?? {};
       const routeRaw = normalizeString(receptionistRaw.action_route, "");
       const actionRoute: EntryActionRoute =
         routeRaw === "amend_existing_task" ||
-        routeRaw === "clarify_target" ||
-        routeRaw === "intake_new_task"
+        routeRaw === "intake_new_task" ||
+        routeRaw === "clarify_target"
           ? routeRaw
-          : (fallback.receptionist?.action_route ?? "intake_new_task");
+          : (fallback.receptionist.action_route ?? "intake_new_task");
+      const actionTargetRaw = normalizeString(
+        receptionistRaw.action_target_task_id,
+        fallback.receptionist.action_target_task_id ?? "",
+      );
       return {
         active:
           typeof receptionistRaw.active === "boolean"
             ? receptionistRaw.active
-            : (fallback.receptionist?.active ?? true),
-        mode: "guided_intake",
+            : fallback.receptionist.active,
+        mode: "guided_intake" as const,
         last_briefing_at: normalizeString(
           receptionistRaw.last_briefing_at,
-          fallback.receptionist?.last_briefing_at || now,
+          fallback.receptionist.last_briefing_at || now,
         ),
         pending_questions: normalizeStringList(receptionistRaw.pending_questions),
         amendment_queue_open:
           typeof receptionistRaw.amendment_queue_open === "boolean"
             ? receptionistRaw.amendment_queue_open
-            : (fallback.receptionist?.amendment_queue_open ?? false),
+            : fallback.receptionist.amendment_queue_open,
         action_route: actionRoute,
-        action_target_task_id: (() => {
-          const value = normalizeString(
-            receptionistRaw.action_target_task_id,
-            fallback.receptionist?.action_target_task_id ?? "",
-          );
-          return value || null;
-        })(),
+        action_target_task_id: actionTargetRaw || null,
         clarification_required:
           typeof receptionistRaw.clarification_required === "boolean"
             ? receptionistRaw.clarification_required
-            : (fallback.receptionist?.clarification_required ?? false),
+            : fallback.receptionist.clarification_required,
         last_action_at: normalizeString(
           receptionistRaw.last_action_at,
-          fallback.receptionist?.last_action_at || now,
+          fallback.receptionist.last_action_at || now,
         ),
       };
     })(),
@@ -586,10 +627,6 @@ export function normalizeOrchestrateSession(
       workspace_root: normalizeString(draftRaw.workspace_root, fallback.draft.workspace_root),
       risk_level: normalizeRiskLevel(draftRaw.risk_level, fallback.draft.risk_level),
       budget: normalizeBudget(draftRaw.budget, fallback.draft.budget),
-      requested_mode:
-        typeof draftRaw.requested_mode === "string"
-          ? normalizeRequestedMode(draftRaw.requested_mode, fallback.draft.requested_mode ?? "auto")
-          : fallback.draft.requested_mode,
       constraints: normalizeStringList(draftRaw.constraints),
       deliverables: normalizeStringList(draftRaw.deliverables),
       notes: normalizeStringList(draftRaw.notes),
@@ -608,6 +645,10 @@ export function normalizeOrchestrateSession(
   };
 }
 
+/**
+ * Extracts the latest user-authored message from SDK-style message arrays, supporting
+ * both raw string content and segmented content arrays.
+ */
 export function extractLatestUserMessage(messages: unknown[] | undefined): string {
   const list = Array.isArray(messages) ? messages : [];
   for (let i = list.length - 1; i >= 0; i -= 1) {
@@ -643,8 +684,11 @@ export function extractLatestUserMessage(messages: unknown[] | undefined): strin
   return "";
 }
 
+/**
+ * Builds the instruction block injected into the entry-agent context for an active session.
+ */
 export function buildEntryAgentContext(
-  session: OrchestrateSessionState,
+  _session: OrchestrateSessionState,
   metaBlock?: string,
   decodeContractBlock?: string,
 ): string {
@@ -653,17 +697,9 @@ export function buildEntryAgentContext(
     "Do not execute the task. Do not create tasks automatically.",
     "Your job is to help the user refine task goals and orchestration configuration.",
     "Planner remains isolated from raw user conversation. Only structured summaries and amendment batches flow downstream.",
+    "Do not ask the user to choose single/multi mode; planner-core decides the initial split automatically.",
     "Ask concise follow-up questions only when important details are missing.",
     "Remind the user to run /orchestrate summary when they want a structured recap.",
-    "Current draft:",
-    `- task_goal: ${session.draft.task_goal || "(none yet)"}`,
-    `- project_id: ${session.draft.project_id || "(default)"}`,
-    `- workspace_root: ${session.draft.workspace_root || "(default)"}`,
-    `- risk_level: ${session.draft.risk_level}`,
-    `- budget: ${session.draft.budget.max_token_cost},${session.draft.budget.max_execution_time_seconds}`,
-    "- planner_ingress: auto-only",
-    "- initial_split_decision: planner-managed",
-    `- deliverables: ${session.draft.deliverables.join(", ") || "(none)"}`,
   ];
   if (decodeContractBlock?.trim()) {
     lines.push("", decodeContractBlock.trim());
@@ -674,6 +710,10 @@ export function buildEntryAgentContext(
   return lines.join("\n");
 }
 
+/**
+ * `/orchestrate run` no longer accepts free text. This helper returns the usage error
+ * message when legacy payload text is supplied.
+ */
 export function validateRunCommandPayload(payload: string): string | null {
   if (!payload.trim()) {
     return null;
@@ -683,6 +723,10 @@ export function validateRunCommandPayload(payload: string): string | null {
   );
 }
 
+/**
+ * Returns the latest summary only when it is present, non-empty, and not already
+ * superseded or consumed by a previous run.
+ */
 export function getRunnableSummary(
   session: OrchestrateSessionState | null | undefined,
 ): { ok: true; summary: OrchestrateSummary } | { ok: false; error: string } {
