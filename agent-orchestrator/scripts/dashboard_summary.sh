@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Builds a dashboard snapshot from task metadata under the coordination tree.
+# Inputs: optional source root plus markdown/json output paths.
+# Side effects: rewrites the dashboard artifacts after generating temp files.
+# Failure model: exits non-zero when jq/find or approval validation fails.
+
 ROOT="${1:-templates/coordination/tasks/task_folders}"
 OUT_MD="${2:-templates/coordination/orchestrator/dashboard.md}"
 OUT_JSON="${3:-templates/coordination/orchestrator/dashboard.json}"
@@ -10,6 +15,8 @@ KEEPER_REPORT_JSON="templates/coordination/orchestrator/keeper-report.json"
 mkdir -p "$(dirname "$OUT_MD")"
 mkdir -p "$(dirname "$OUT_JSON")"
 
+# Stage intermediate data in temp files so the published dashboard only updates
+# after the full aggregation succeeds.
 tmp_lines="$(mktemp)"
 tmp_json="$(mktemp)"
 tmp_md="$(mktemp)"
@@ -27,6 +34,8 @@ if [[ -d "$ROOT" ]]; then
     fi
     approval_id=""
     if [[ -f "$task_dir/approval.json" ]]; then
+      # Only surface approval ids that still validate against the audit source
+      # of truth; expired or malformed approvals should look absent.
       if "$VALIDATE_APPROVAL_SCRIPT" "$task_dir" >/dev/null 2>&1; then
         approval_id="$(jq -r '.approval_id // empty' "$task_dir/approval.json")"
       fi
@@ -42,6 +51,8 @@ if [[ -d "$ROOT" ]]; then
 fi
 
 if [[ ! -s "$tmp_lines" ]]; then
+  # Publish an empty but well-formed dashboard when no tasks exist so downstream
+  # readers can keep the same schema.
   cat > "$tmp_json" <<EOF
 {"generated_at":"","source_root":"$ROOT","active_pipelines":[],"pending_actions":[],"system_health":{"open_tasks":0,"blocked_tasks":0,"stale_locks":[],"stale_in_progress":[]}}
 EOF
@@ -114,6 +125,7 @@ jq -r '
 ' "$tmp_json" > "$tmp_md"
 
 if [[ -f "$KEEPER_REPORT_JSON" ]]; then
+  # Keeper status is optional and should not block the main task dashboard.
   keeper_status="$(jq -r '.status // "UNKNOWN"' "$KEEPER_REPORT_JSON" 2>/dev/null || echo "UNKNOWN")"
   {
     echo ""
@@ -124,6 +136,8 @@ if [[ -f "$KEEPER_REPORT_JSON" ]]; then
   } >> "$tmp_md"
 fi
 
+# Atomic renames avoid leaving half-written dashboard outputs if the script is
+# interrupted after generation.
 mv "$tmp_json" "$OUT_JSON"
 mv "$tmp_md" "$OUT_MD"
 

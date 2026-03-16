@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Summarizes task-folder health across locks, stale work, artifact presence, log integrity,
+# and approval validity.
+# Inputs: optional task root and stale threshold in seconds.
+# Side effects: none beyond invoking validation helpers and printing one JSON report.
+# Failure model: returns an empty healthy-style result when the root is missing; otherwise exits non-zero only on shell-level failures.
+
 ROOT="${1:-templates/coordination/tasks/task_folders}"
 NOW_EPOCH="$(date -u +%s)"
 STALE_SEC="${2:-3600}"
@@ -34,6 +40,8 @@ if [[ ! -d "$ROOT" ]]; then
   exit 0
 fi
 
+# Evaluate each task independently so one malformed task still leaves a usable
+# global health summary for the rest of the queue.
 while IFS= read -r -d '' task_dir; do
   meta="$task_dir/meta.json"
   if [[ ! -f "$meta" ]]; then

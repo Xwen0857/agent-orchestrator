@@ -2,6 +2,12 @@
 set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
+# Validates that a task's approval.json still matches the approval ticket and
+# is currently usable.
+# Inputs: task directory containing meta.json and approval.json.
+# Side effects: none beyond reading approval artifacts.
+# Failure model: exits non-zero on missing fields, expired approvals, or ticket mismatch.
+
 if [[ $# -lt 1 ]]; then
   echo "usage: $0 <task_dir>"
   exit 2
@@ -45,6 +51,8 @@ if [[ "$TASK_ID" != "$APPROVAL_TASK_ID" ]]; then
   exit 1
 fi
 
+# Restrict approvals to the known operational scopes so stray tickets cannot be
+# reused for unrelated actions.
 case "$SCOPE" in
   over_budget_continue|high_risk_operation|break_glass) ;;
   *)
@@ -53,6 +61,8 @@ case "$SCOPE" in
     ;;
 esac
 
+# Timestamp validation is delegated to Python for strict UTC parsing rather than
+# relying on shell date portability.
 if python3 - "$APPROVED_AT" "$EXPIRES_AT" <<'PY'
 import sys
 from datetime import datetime, timezone

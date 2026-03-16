@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Grants an approval ticket and writes the task-local approval record consumed by
+# gate validation and state-unblock flows.
+# Inputs: task dir, approval id, approver, scope, and optional duration in minutes.
+# Side effects: writes `approval.json`, appends the approval decision to the ticket,
+# and appends one approval-granted event to the task log.
+# Failure model: exits non-zero on invalid args, missing ticket/task files, or failed event append.
+
 if [[ $# -lt 4 ]]; then
   echo "usage: $0 <task_dir> <approval_id> <approved_by> <scope> [duration_minutes]"
   exit 2
@@ -36,6 +43,8 @@ print((datetime.now(timezone.utc) + timedelta(minutes=mins)).strftime("%Y-%m-%dT
 PY
 )"
 
+# `approval.json` is the machine-readable approval artifact that later gate checks
+# use to decide whether blocked work may continue.
 cat > "$APPROVAL_JSON" <<EOF
 {
   "approval_id": "$APPROVAL_ID",

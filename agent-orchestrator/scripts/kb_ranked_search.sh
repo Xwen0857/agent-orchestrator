@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ranks knowledge-base entries by lexical hits plus stored score metadata.
+# Inputs: query string and optional top-k result count.
+# Side effects: none.
+# Failure model: exits non-zero only for invalid usage or Python runtime errors.
+
 if [[ $# -lt 1 ]]; then
   echo "usage: $0 <query> [top_k]"
   exit 2
@@ -10,6 +15,8 @@ QUERY="$1"
 TOP_K="${2:-5}"
 ENTRIES_DIR="knowledge-base/entries"
 
+# Python keeps the ranking logic readable while still returning a shell-friendly
+# pipe-delimited format.
 python3 - "$QUERY" "$TOP_K" "$ENTRIES_DIR" <<'PY'
 import os
 import re

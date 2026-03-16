@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Applies runtime sandbox and ACL checks before launching a worker/tester command.
+# Inputs: role, task id, workspace root, run root, optional runtime profile, and the command after `--`.
+# Side effects: validates writable roots, exports runtime profile env, writes sandbox-denial
+# records, and then executes the target command inside the workspace directory.
+# Failure model: exits non-zero on invalid args, ACL denial, missing runtime profiles, or invalid isolation config.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 RUNTIME_CONFIG="$ROOT/templates/coordination/orchestrator/execution_runtime.json"
 ACL_SCRIPT="$ROOT/agent-orchestrator/scripts/enforce_role_acl.sh"
@@ -17,6 +23,8 @@ usage() {
   exit 2
 }
 
+# Parse wrapper flags before the final `--` so the remaining argv can be passed
+# through untouched to the child command.
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --role)
@@ -72,6 +80,8 @@ if ! "$ACL_SCRIPT" --role "$ROLE" --action write --target "$RUN_ROOT" --task-id 
   exit 1
 fi
 
+# Load the runtime profile before launching the child command so all required env
+# is validated and exported inside the wrapper.
 if [[ "$ISOLATION_ENABLED" == "true" ]]; then
   PROFILE_FILE="$RUN_ROOT/$PROFILE_FILE_NAME"
   if [[ ! -f "$PROFILE_FILE" ]]; then

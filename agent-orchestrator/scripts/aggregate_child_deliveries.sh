@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Collects delivery outputs from child tasks into one staged aggregate bundle for a parent run.
+# Inputs: parent task dir, parent run root, and a JSON array of child task ids.
+# Side effects: validates child delivery trees, writes an aggregate manifest, and populates
+# `delivery_staging` under the parent run root when aggregation succeeds.
+# Failure model: exits non-zero on invalid args, unreadable child state, collisions, or missing deliveries.
+
 usage() {
   echo "usage: $0 --task-dir <parent_task_dir> --run-root <parent_run_root> --children-json <json_array>"
   exit 2
@@ -40,6 +46,8 @@ mkdir -p "$RUN_ROOT"
 STAGING_ROOT="$RUN_ROOT/delivery_staging"
 MANIFEST_PATH="$RUN_ROOT/delivery_staging_manifest.json"
 
+# Delegate file enumeration, collision detection, manifest generation, and staged copy
+# to Python so path handling and hashing remain easier to reason about than in pure shell.
 python3 - "$TASK_DIR" "$RUN_ROOT" "$STAGING_ROOT" "$MANIFEST_PATH" "$CHILDREN_JSON" <<'PY'
 import hashlib
 import json
@@ -172,4 +180,3 @@ print(
     )
 )
 PY
-
