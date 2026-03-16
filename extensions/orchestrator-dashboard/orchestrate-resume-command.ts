@@ -9,7 +9,7 @@ type HandleResumeSubcommandParams = {
   };
   runWhitelistedScript: (params: {
     repoRoot: string;
-    scriptName: "runtime_resume_replan";
+    scriptName: "planner_resume_hard_replan";
     args: string[];
   }) => Promise<{ stdout: string; stderr: string }>;
   emitEvent: (type: string, payload: Record<string, unknown>) => Promise<void>;
@@ -32,7 +32,7 @@ export async function handleResumeSubcommand(
   try {
     await params.runWhitelistedScript({
       repoRoot: params.repoRoot,
-      scriptName: "runtime_resume_replan",
+      scriptName: "planner_resume_hard_replan",
       args: [path.relative(params.repoRoot, taskDir) || "."],
     });
   } catch (error) {
@@ -40,14 +40,14 @@ export async function handleResumeSubcommand(
     return `orchestrate resume failed: ${message}`;
   }
 
-  await params.emitEvent("orchestrate.task.runtime_recovery_requested", {
+  await params.emitEvent("orchestrate.task.replan_resumed", {
     task_id: taskId,
     task_dir: taskDir,
   });
 
   return [
     `task_id: ${taskId}`,
-    "runtime recovery requested",
-    "next: run /orchestrate status <task_id> to track recovery progress",
+    "hard replan resume triggered",
+    "next: run /orchestrate status <task_id> to track execution recovery",
   ].join("\n");
 }

@@ -7,7 +7,9 @@
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
-    "typecheck": "tsc -p tsconfig.test.json --noEmit"
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "test:planner-contract-lane": "vitest run --config vitest.config.ts tests/orchestrate-planner-boundary.test.ts tests/planner-dependency-config-schema.test.ts tests/planner-dependency-config-boundary.test.ts tests/planner-invariants-doc-consistency.test.ts tests/orchestrate-planner-contract.test.ts tests/orchestrate-planner-observability.test.ts tests/orchestrate-planner-hints-contract.test.ts tests/orchestrate-planner-projection.test.ts tests/orchestrate-view-model.test.ts tests/orchestrate-response.test.ts tests/orchestrate-status-command.test.ts tests/orchestrate-run-command.test.ts tests/planner-entry.integration.test.ts tests/planner-apply-decision.integration.test.ts",
+    "test:full-plugin-regression": "vitest run --config vitest.config.ts"
   },
   "devDependencies": {
     "@types/node": "25.3.1",

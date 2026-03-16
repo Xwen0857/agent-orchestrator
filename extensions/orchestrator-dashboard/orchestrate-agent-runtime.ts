@@ -1,7 +1,14 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import type { OrchestrateStrategy } from "./orchestrate-command.js";
+import {
+  type PlannerAgentPolicy,
+  type PlannerPolicyDocument,
+} from "./orchestrate-planner-contract.js";
+import { loadPlannerPolicyDocument } from "./orchestrate-planner-policy.js";
 
 export type AgentRuntimeConfig = {
+  plannerPolicy: PlannerPolicyDocument;
+  plannerAgent: PlannerAgentPolicy;
   llm: {
     enabled: boolean;
     authMode: "auto" | "standalone" | "openclaw";
@@ -36,6 +43,7 @@ export type BuildAgentRuntimeControllerParams = {
   api: Pick<OpenClawPluginApi, "config">;
   paths: {
     agentRuntimeConfig: string;
+    plannerPolicyConfig?: string;
   };
   io: {
     readJsonOrDefault: <T>(targetPath: string, fallback: T) => Promise<T>;
@@ -86,6 +94,18 @@ export function buildAgentRuntimeController(
 ): AgentRuntimeController {
   const loadAgentRuntimeConfig = async (): Promise<AgentRuntimeConfig> => {
     const defaults: AgentRuntimeConfig = {
+      plannerPolicy: await loadPlannerPolicyDocument({
+        io: {
+          readJsonOrDefault: params.io.readJsonOrDefault,
+        },
+        paths: {
+          plannerPolicyConfig:
+            params.paths.plannerPolicyConfig ??
+            params.paths.agentRuntimeConfig.replace(/agent_runtime\.json$/u, "planner_policy.json"),
+          agentRuntimeConfig: params.paths.agentRuntimeConfig,
+        },
+      }),
+      plannerAgent: {} as PlannerAgentPolicy,
       llm: {
         enabled: false,
         authMode: "auto",
@@ -101,6 +121,7 @@ export function buildAgentRuntimeController(
           "You are an orchestration planner. Return strict JSON only with optional keys: title, goal, risk_level, budget.",
       },
     };
+    defaults.plannerAgent = defaults.plannerPolicy.planner_agent;
     const localRuntimePath = params.paths.agentRuntimeConfig.replace(/\.json$/u, ".local.json");
     const [fromFile, fromLocal] = await Promise.all([
       params.io.readJsonOrDefault<Record<string, unknown>>(params.paths.agentRuntimeConfig, {}),
@@ -182,6 +203,8 @@ export function buildAgentRuntimeController(
       setResolved(providerEnvKey, providerEnvName ? `env:${providerEnvName}` : "");
     }
     return {
+      plannerPolicy: defaults.plannerPolicy,
+      plannerAgent: defaults.plannerPolicy.planner_agent,
       llm: {
         enabled: asBoolean(llmRaw.enabled, defaults.llm.enabled),
         authMode,

@@ -45,6 +45,17 @@ pnpm exec tsc -p tsconfig.json --noEmit
 pnpm exec vitest run src/plugins/orchestrator-dashboard.plugin.test.ts
 ```
 
+When modifying this repository's plugin package directly, run lane-based checks:
+
+```bash
+bash scripts/test_orchestrator_plugin.sh planner-contract-lane
+bash scripts/test_orchestrator_plugin.sh full-plugin-regression
+```
+
+Lane intent:
+- `planner-contract-lane`: fast contract/regression checks for planner decomposition + split-plan summary surfaces.
+- `full-plugin-regression`: full `extensions/orchestrator-dashboard` test suite.
+
 When modifying shell orchestration logic, run the smallest script-level or task-level verification that proves behavior.
 
 If a change is not fully testable in the current environment, state that clearly in the PR.
