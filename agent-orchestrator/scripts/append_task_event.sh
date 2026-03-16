@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Appends one immutable audit event to a task's log chain without changing task state.
+# Inputs: task dir, actor, operation id, action, reason, and optional before/after states.
+# Side effects: acquires the task lock and appends one hashed NDJSON event to `log.ndjson`.
+# Failure model: exits non-zero on missing task metadata, lock acquisition failure, or invalid writes.
+
 if [[ $# -lt 5 ]]; then
   echo "usage: $0 <task_dir> <actor> <operation_id> <action> <reason> [before_state] [after_state]"
   exit 2
@@ -27,6 +32,8 @@ if [[ ! -f "$LOG" ]]; then
   : > "$LOG"
 fi
 
+# Use noclobber lock acquisition so concurrent writers serialize through a simple
+# filesystem lock file rather than racing on the append.
 acquire_lock() {
   local i=0
   while ! (set -o noclobber; echo "$$" > "$LOCK") 2>/dev/null; do
@@ -46,6 +53,8 @@ release_lock() {
 trap release_lock EXIT
 acquire_lock
 
+# Operation ids make the append path idempotent so retried callers do not fork the
+# audit chain with duplicate entries.
 if [[ -s "$LOG" ]] && jq -e --arg op "$OPERATION_ID" 'select(.operation_id == $op)' "$LOG" >/dev/null 2>&1; then
   echo "idempotent replay detected for operation_id=$OPERATION_ID; no-op"
   exit 0

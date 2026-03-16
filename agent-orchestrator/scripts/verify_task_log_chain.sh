@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Verifies that a task's NDJSON event log has an intact hash chain.
+# Inputs: task directory.
+# Side effects: none beyond stdout diagnostics.
+# Failure model: exits non-zero on missing logs, malformed JSON lines, or broken hash linkage.
+
 if [[ $# -lt 1 ]]; then
   echo "usage: $0 <task_dir>"
   exit 2
@@ -17,6 +22,8 @@ fi
 line_no=0
 prev_hash=""
 
+# Recompute each event hash after removing `hash_self` so the chain can be validated
+# independently of the stored digest.
 while IFS= read -r line; do
   line_no=$((line_no + 1))
   if [[ -z "$line" ]]; then

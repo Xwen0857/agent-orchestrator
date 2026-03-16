@@ -47,7 +47,145 @@
     "mode": "local_threads",
     "refinement_scope": "",
     "runtime_view_path": "worker_runtime_view.json",
-    "cluster_id": ""
+    "cluster_id": "",
+    "selected_template_id": "",
+    "selected_template_origin": "builtin",
+    "selected_template_source_id": "",
+    "template_version": "",
+    "registration_source": "",
+    "delivery_mode": "unsupported_placeholder",
+    "template_kind": "placeholder",
+    "governance_policy_id": "",
+    "result_contract_version": "worker-template-result-contract-v1",
+    "allowed_template_origins": [
+      "builtin",
+      "custom"
+    ],
+    "custom_registration_required": true,
+    "default_message_type": "partial_deliverable",
+    "default_target_role_types": [],
+    "refinement_route_ref": {
+      "module_id": "",
+      "refinement_task_id": ""
+    },
+    "milestone_set": {
+      "schema_version": "worker-milestone-set-v1",
+      "set_id": "",
+      "task_id": "",
+      "worker_instance_id": "",
+      "generated_at": "",
+      "source": "scheduler",
+      "evaluation_window_seconds": 300,
+      "milestones": [],
+      "summary": {
+        "total_count": 0,
+        "required_count": 0,
+        "satisfied_count": 0,
+        "required_satisfied_count": 0,
+        "blocking_pending_count": 0,
+        "core_pending_count": 0,
+        "all_required_met": false,
+        "last_progress_at": ""
+      }
+    },
+    "milestone_targets": [],
+    "milestone_completed_targets": [],
+    "milestone_progress_signal": {
+      "schema_version": "worker-milestone-progress-signal-v1",
+      "completed_count": 0,
+      "total_count": 0,
+      "reported_at": ""
+    },
+    "milestone_detection_window_seconds": 300,
+    "stage_write_stagnation_seconds": 120,
+    "all_milestones_met": false,
+    "keeper_query_path": "scheduler_keeper_assembly_query.json",
+    "failure_pattern_summary_path": "worker_failure_pattern_summary.json",
+    "failure_pattern_index_refs": [],
+    "failure_pattern_read_contract": {
+      "mode": "bounded_guidance",
+      "agent_may_quote_raw_index": false,
+      "agent_may_request_additional_history": false,
+      "agent_must_treat_patterns_as_execution_constraints": true,
+      "agent_must_not_reinterpret_budget_policy": true
+    },
+    "custom_template_registrations": [],
+    "custom_coarse_template_roles": [],
+    "semantic_topology": {
+      "transaction_layer": "update",
+      "action_layer": "implement",
+      "budget_layer": "fast",
+      "convergence_layer": "not_converged"
+    },
+    "implementation_topology": {
+      "artifact_layer": "code",
+      "coarse_template_role": "backend",
+      "role_layer": "backend",
+      "tech_layer": "generic",
+      "framework_layer": "generic",
+      "custom_overlay_layer": {
+        "overlay_id": "none",
+        "overlay_fields": [],
+        "config": {}
+      }
+    },
+    "cluster_projection": {
+      "schema_version": "worker-cluster-projection-v1",
+      "semantic_clusters": [],
+      "implementation_clusters": [],
+      "hybrid_clusters": []
+    },
+    "custom_runtime_gate_status": "not_applicable",
+    "custom_capability_gate_reason": ""
+  },
+  "worker_stage": {
+    "schema_version": "worker-stage-contract-v1",
+    "worker_stage_id": "",
+    "worker_stage_root": "",
+    "worker_stage_profile": "",
+    "stage_isolation_mode": "wrapper_enforced",
+    "stage_runtime_class": "default_shell",
+    "allowed_execution_mode": "local_threads",
+    "scratch_root": "",
+    "delivery_root": "",
+    "inputs_root": "",
+    "runtime_root": "",
+    "mount_policy": {
+      "inputs_root": "read_only",
+      "scratch_root": "read_write",
+      "delivery_root": "write_only",
+      "cluster_mailbox": "append_only",
+      "authority_paths": "read_only"
+    },
+    "allocation": {
+      "worker_stage_scope": "per_worker_instance",
+      "worker_stage_max_bytes": 0,
+      "worker_stage_max_file_count": 0,
+      "worker_stage_max_single_file_bytes": 0,
+      "allow_binary_artifacts": false,
+      "worker_stage_overflow_policy": "",
+      "worker_stage_bytes_used": 0,
+      "worker_stage_file_count": 0,
+      "worker_stage_overflow_status": ""
+    },
+    "retention": {
+      "worker_stage_retention_policy": "",
+      "success_cleanup_rule": "retain_delivery_only",
+      "failure_cleanup_rule": "retain_evidence_bundle",
+      "purge_on_success": true,
+      "purge_on_failure": false,
+      "worker_stage_exported_artifact_count": 0,
+      "worker_stage_last_export_status": "",
+      "worker_stage_last_export_manifest_class": "",
+      "worker_stage_last_fault_class": "",
+      "worker_stage_retention_result": {},
+      "worker_stage_last_cleanup_at": "",
+      "worker_stage_last_retained_artifact_ids": [],
+      "worker_stage_archive_ready": false,
+      "worker_stage_reclaim_ready": false,
+      "worker_stage_purge_ready": false,
+      "worker_stage_retention_decision": ""
+    }
   },
   "worker_budget": {
     "budget_lane": "fast",
@@ -72,12 +210,20 @@
     "workspace_root": "",
     "mailbox_path": "",
     "archive_path": "",
+    "default_target_role_types": [],
+    "cluster_projection": {
+      "schema_version": "worker-cluster-projection-v1",
+      "semantic_clusters": [],
+      "implementation_clusters": [],
+      "hybrid_clusters": []
+    },
     "mailbox_counters": {
       "published": 0,
       "acknowledged": 0,
       "consumed": 0,
       "archived": 0
     },
+    "last_published_message_type": "",
     "mailbox_last_expired_at": "",
     "updated_at": ""
   },
@@ -86,7 +232,34 @@
     "reclaim_requested_at": "",
     "rebuild_ready": false,
     "rebuild_reason": "",
-    "last_rebuilt_at": ""
+    "last_rebuilt_at": "",
+    "last_worker_fault_action": "none",
+    "worker_fault_retryable": false,
+    "worker_fault_requires_rebuild": false,
+    "last_fault_action_applied": "none",
+    "fault_actuation_mode": "summary_only",
+    "fault_action_blocked_by_policy": false,
+    "worker_fault_class": "",
+    "archive_ready": false,
+    "reclaim_ready": false,
+    "purge_ready": false,
+    "retention_decision": ""
+  },
+  "observer": {
+    "runtime_view_path": "observer_view.json",
+    "runtime_page_id": "runtime",
+    "terminal_digest_path": "worker_terminal_digest.json",
+    "terminal_page_id": "terminal",
+    "raw_log_index_path": "worker_raw_log_index.json",
+    "terminal_last_observed_at": "",
+    "terminal_lifecycle_result": "",
+    "bridge_packet_path": "observer_refinement_packet.json",
+    "bridge_last_observed_at": "",
+    "bridge_last_fingerprint": "",
+    "bridge_last_request_id": "",
+    "bridge_last_consumed_at": "",
+    "bridge_last_consumed_fingerprint": "",
+    "bridge_last_consumed_request_id": ""
   },
   "keeper_feedback": {
     "feedback_types": [],

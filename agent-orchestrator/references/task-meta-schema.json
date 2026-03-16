@@ -247,6 +247,309 @@
           "type": "string"
         }
       }
+    },
+    "observer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtime_view_path": {
+          "type": "string"
+        },
+        "runtime_page_id": {
+          "type": "string"
+        },
+        "terminal_digest_path": {
+          "type": "string"
+        },
+        "terminal_page_id": {
+          "type": "string"
+        },
+        "raw_log_index_path": {
+          "type": "string"
+        },
+        "terminal_last_observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "terminal_lifecycle_result": {
+          "type": "string"
+        },
+        "bridge_packet_path": {
+          "type": "string"
+        },
+        "bridge_last_observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "bridge_last_fingerprint": {
+          "type": "string"
+        },
+        "bridge_last_request_id": {
+          "type": "string"
+        },
+        "bridge_last_consumed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "bridge_last_consumed_fingerprint": {
+          "type": "string"
+        },
+        "bridge_last_consumed_request_id": {
+          "type": "string"
+        }
+      }
+    },
+    "worker_runtime": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "schema_version": {
+          "type": "string"
+        },
+        "assembled_at": {
+          "type": "string"
+        },
+        "role_type": {
+          "type": "string"
+        },
+        "selected_template_id": {
+          "type": "string"
+        },
+        "selected_template_origin": {
+          "type": "string",
+          "enum": [
+            "builtin",
+            "custom"
+          ]
+        },
+        "selected_template_source_id": {
+          "type": "string"
+        },
+        "template_version": {
+          "type": "string"
+        },
+        "registration_source": {
+          "type": "string"
+        },
+        "governance_policy_id": {
+          "type": "string"
+        },
+        "result_contract_version": {
+          "type": "string"
+        },
+        "allowed_template_origins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "custom_registration_required": {
+          "type": "boolean"
+        },
+        "default_message_type": {
+          "type": "string"
+        },
+        "refinement_route_ref": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "module_id": {
+              "type": "string"
+            },
+            "refinement_task_id": {
+              "type": "string"
+            }
+          }
+        },
+        "milestone_set": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "milestone_targets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "milestone_completed_targets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "milestone_progress_signal": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "milestone_completion_signal": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "milestone_detection_window_seconds": {
+          "type": "number"
+        },
+        "stage_write_stagnation_seconds": {
+          "type": "number"
+        },
+        "all_milestones_met": {
+          "type": "boolean"
+        },
+        "keeper_query_path": {
+          "type": "string"
+        },
+        "failure_pattern_summary_path": {
+          "type": "string"
+        },
+        "failure_pattern_index_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "failure_pattern_read_contract": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "custom_template_registrations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "custom_coarse_template_roles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "semantic_topology": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "implementation_topology": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "cluster_projection": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "custom_runtime_gate_status": {
+          "type": "string"
+        },
+        "custom_capability_gate_reason": {
+          "type": "string"
+        }
+      }
+    },
+    "worker_stage": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "worker_stage_id": {
+          "type": "string"
+        },
+        "worker_stage_root": {
+          "type": "string"
+        },
+        "worker_stage_profile": {
+          "type": "string"
+        },
+        "stage_isolation_mode": {
+          "type": "string"
+        },
+        "stage_runtime_class": {
+          "type": "string"
+        },
+        "allowed_execution_mode": {
+          "type": "string"
+        },
+        "allocation": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "retention": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "worker_budget": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "worker_convergence": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "task_cluster": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "last_published_message_type": {
+          "type": "string"
+        }
+      }
+    },
+    "runtime_worker_control": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "budget_status": {
+          "type": "string"
+        },
+        "reclaim_requested_at": {
+          "type": "string"
+        },
+        "rebuild_ready": {
+          "type": "boolean"
+        },
+        "rebuild_reason": {
+          "type": "string"
+        },
+        "last_rebuilt_at": {
+          "type": "string"
+        },
+        "last_worker_fault_action": {
+          "type": "string"
+        },
+        "worker_fault_retryable": {
+          "type": "boolean"
+        },
+        "worker_fault_requires_rebuild": {
+          "type": "boolean"
+        },
+        "last_fault_action_applied": {
+          "type": "string"
+        },
+        "fault_actuation_mode": {
+          "type": "string"
+        },
+        "fault_action_blocked_by_policy": {
+          "type": "boolean"
+        },
+        "worker_fault_class": {
+          "type": "string"
+        },
+        "archive_ready": {
+          "type": "boolean"
+        },
+        "reclaim_ready": {
+          "type": "boolean"
+        },
+        "purge_ready": {
+          "type": "boolean"
+        },
+        "retention_decision": {
+          "type": "string"
+        }
+      }
+    },
+    "keeper_feedback": {
+      "type": "object",
+      "additionalProperties": true
     }
   }
 }
