@@ -2,6 +2,13 @@
 set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
+# Runs one full orchestrator scheduling cycle for either one target task or the next
+# eligible task in the queue.
+# Inputs: optional tasks root plus task selection, role, work-domain, and workspace flags.
+# Side effects: reads and writes task state, invokes planner/worker/tester/audit scripts,
+# and refreshes runtime dashboard artifacts.
+# Failure model: exits non-zero on invalid args, missing dependencies, or guarded workflow failures.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 source "$ROOT/agent-orchestrator/scripts/planner_state_paths.sh"
 TASKS_ROOT="$ROOT/templates/coordination/tasks/task_folders"
@@ -12,6 +19,9 @@ INPUT_WORKSPACE_ROOT=""
 ONLY_ONE_TASK=true
 PLANNING_ACTOR="planner-core"
 SCHEDULING_ACTOR="scheduler-ops"
+
+# Parse the optional positional tasks root first so the remaining flags can be validated
+# against one stable usage contract.
 if [[ $# -gt 0 ]]; then
   case "${1:-}" in
     --task-id|--role|--work-domain-id|--workspace-root)
@@ -64,6 +74,9 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Resolve the child script graph once up front so dependency failures happen before
+# any task state mutation starts.
 DASHBOARD_SCRIPT="$ROOT/agent-orchestrator/scripts/dashboard_summary.sh"
 TRANSITION_SCRIPT="$ROOT/agent-orchestrator/scripts/transition_task_state.sh"
 APPEND_SCRIPT="$ROOT/agent-orchestrator/scripts/append_task_event.sh"
@@ -82,6 +95,7 @@ ENV_BUILD_SCRIPT="$ROOT/agent-orchestrator/scripts/workspace_build_env.sh"
 WS_CHANGE_DETECT_SCRIPT="$ROOT/agent-orchestrator/scripts/detect_workspace_user_changes.sh"
 WS_SYNC_SCRIPT="$ROOT/agent-orchestrator/scripts/planner_sync_on_workspace_change.sh"
 REPLAN_CONSUME_SCRIPT="$ROOT/agent-orchestrator/scripts/planner_consume_replan_queue.sh"
+OBSERVER_BRIDGE_CONSUME_SCRIPT="$ROOT/agent-orchestrator/scripts/planner_consume_observer_bridge.sh"
 AUDIT_WS_DELTA_SCRIPT="$ROOT/agent-orchestrator/scripts/audit_workspace_delta.sh"
 AGGREGATE_SCRIPT="$ROOT/agent-orchestrator/scripts/aggregate_child_deliveries.sh"
 AUDIT_AGGREGATE_SCRIPT="$ROOT/agent-orchestrator/scripts/audit_aggregate_release.sh"
@@ -95,6 +109,7 @@ if [[ ! -d "$TASKS_ROOT" ]]; then
 fi
 TASKS_ROOT="$(cd "$TASKS_ROOT" && pwd -P)"
 
+# Refuse to proceed if any required child script is missing or not executable.
 if [[ ! -x "$TRANSITION_SCRIPT" ]]; then
   echo "transition script not executable: $TRANSITION_SCRIPT"
   exit 1
@@ -105,6 +120,10 @@ if [[ ! -x "$APPEND_SCRIPT" ]]; then
 fi
 if [[ ! -x "$WORKER_SCRIPT" ]]; then
   echo "worker script not executable: $WORKER_SCRIPT"
+  exit 1
+fi
+if [[ ! -x "$OBSERVER_BRIDGE_CONSUME_SCRIPT" ]]; then
+  echo "observer bridge consume script not executable: $OBSERVER_BRIDGE_CONSUME_SCRIPT"
   exit 1
 fi
 if [[ ! -x "$TESTER_SCRIPT" ]]; then
@@ -156,7 +175,7 @@ if [[ ! -x "$WS_SYNC_SCRIPT" ]]; then
   exit 1
 fi
 if [[ ! -x "$REPLAN_CONSUME_SCRIPT" ]]; then
-  echo "replan consume script not executable: $REPLAN_CONSUME_SCRIPT"
+  echo "planner replan consume script not executable: $REPLAN_CONSUME_SCRIPT"
   exit 1
 fi
 if [[ ! -x "$AUDIT_WS_DELTA_SCRIPT" ]]; then
@@ -409,6 +428,15 @@ append_event_nonfatal() {
   local after_state="${6:-}"
   local op_id="op_evt_$(date -u +%Y%m%d%H%M%S)_$$_$RANDOM"
   "$APPEND_SCRIPT" "$task_dir" "$actor" "$op_id" "$action" "$reason" "$before_state" "$after_state" >/dev/null 2>&1 || true
+}
+
+validate_worker_runtime_view() {
+  local task_dir="$1"
+  local runtime_view="$task_dir/worker_runtime_view.json"
+  [[ -f "$runtime_view" ]] || return 1
+  [[ "$(jq -r '.schema_version // empty' "$runtime_view" 2>/dev/null || true)" == "worker-runtime-view-v1" ]] || return 1
+  [[ -n "$(jq -r '.goal // .semantic.goal // empty' "$runtime_view" 2>/dev/null || true)" ]] || return 1
+  return 0
 }
 
 ensure_execution_roles_meta() {
@@ -676,6 +704,15 @@ while IFS= read -r -d '' meta; do
     runtime_profile_project="$PROJECT_RUNTIME_PROFILE_DEFAULT"
   fi
   ensure_execution_roles_meta "$task_dir" "$state" "$PLANNING_ACTOR" "$SCHEDULING_ACTOR"
+  if [[ -f "$task_dir/observer_refinement_packet.json" && "$state" != "CLOSED" ]]; then
+    if ! "$OBSERVER_BRIDGE_CONSUME_SCRIPT" "$task_dir" >/dev/null 2>&1; then
+      failed=$((failed + 1))
+      failed_lines+=("$task_id: planner observer bridge consume failed")
+      continue
+    fi
+    meta="$task_dir/meta.json"
+    state="$(jq -r '.state // ""' "$meta" 2>/dev/null || true)"
+  fi
   planner_replan_status="$(jq -r '.planner_replan.status // ""' "$meta" 2>/dev/null || true)"
   if [[ "$planner_replan_status" == "queued" && "$state" != "CLOSED" ]]; then
     if ! "$REPLAN_CONSUME_SCRIPT" "$task_dir" >/dev/null 2>&1; then
@@ -708,7 +745,7 @@ while IFS= read -r -d '' meta; do
       continue
     fi
     if [[ "$planner_replan_worker_policy" == "pause_and_require_replan" ]]; then
-      append_if_missing "$task_dir/work.md" "- Latest action: worker execution paused pending runtime recovery request"
+      append_if_missing "$task_dir/work.md" "- Latest action: worker execution paused pending planner-level replan"
       continue
     fi
   fi
@@ -902,11 +939,20 @@ while IFS= read -r -d '' meta; do
         fi
       fi
       if [[ "$SANDBOX_ENABLED" == "true" ]]; then
+        if ! validate_worker_runtime_view "$task_dir"; then
+          failed=$((failed + 1))
+          failed_lines+=("$task_id: worker runtime view missing or invalid")
+          continue
+        fi
         if ! "$SANDBOX_SCRIPT" --role "worker-delivery" --task-id "$task_id" --workspace-root "$workspace_root" --run-root "$run_root" --runtime-profile "$runtime_profile_project" -- "$WORKER_SCRIPT" "$task_dir" >/dev/null 2>&1; then
           worker_rc=1
         else
           worker_rc=0
         fi
+      elif ! validate_worker_runtime_view "$task_dir"; then
+        failed=$((failed + 1))
+        failed_lines+=("$task_id: worker runtime view missing or invalid")
+        continue
       elif ! "$WORKER_SCRIPT" "$task_dir" >/dev/null 2>&1; then
         worker_rc=1
       else
