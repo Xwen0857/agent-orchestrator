@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Allocates a worker-specific work domain for a task and records the workspace
+# path back into task metadata.
+# Inputs: task directory and optional worker id.
+# Side effects: creates workspace directories and rewrites task meta.json.
+# Failure model: exits non-zero when task metadata is missing or invalid.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 RUNTIME_CONFIG="$ROOT/templates/coordination/orchestrator/execution_runtime.json"
 POLICY_FILE_DEFAULT="$ROOT/templates/coordination/security/role_permissions.effective.json"
@@ -45,6 +51,7 @@ mkdir -p "$WORKSPACE_ROOT/src" "$WORKSPACE_ROOT/tests" "$WORKSPACE_ROOT/artifact
 NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 TMP_META="$(mktemp "$TASK_DIR/.meta.workdomain.XXXXXX.json")"
 
+# Update task metadata through a temp file so readers never see a partial write.
 jq \
   --arg work_domain_id "$WORK_DOMAIN_ID" \
   --arg workspace_root "$WORKSPACE_ROOT" \

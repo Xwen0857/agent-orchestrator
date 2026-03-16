@@ -2,6 +2,13 @@
 set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
+# Dispatches multiple eligible tasks in one orchestration tick using the configured
+# execution mode and concurrency budget.
+# Inputs: optional tasks root plus mode, max-parallel, and max-tasks overrides.
+# Side effects: reads runtime config and planner properties, dispatches agent work,
+# and refreshes dashboard state after the batch completes.
+# Failure model: exits non-zero on invalid args, missing dependencies, or dispatch failures.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 DISPATCH_SCRIPT="$ROOT/agent-orchestrator/scripts/agent_dispatch.sh"
 DASHBOARD_SCRIPT="$ROOT/agent-orchestrator/scripts/dashboard_summary.sh"
@@ -15,6 +22,7 @@ MAX_PARALLEL=""
 MAX_TASKS=""
 POLICY_MODE=""
 
+# Keep usage centralized because multiple parsing branches fail closed through this helper.
 usage() {
   echo "usage: $0 [tasks_root] [--mode <local_threads|container|distributed>] [--max-parallel <n>] [--max-tasks <n>]"
   exit 2
@@ -101,6 +109,8 @@ print(max(mins, 0))
 PY
 }
 
+# Accept an optional positional tasks root before the named flags so old invocation
+# patterns remain valid while newer callers can use explicit overrides.
 if [[ $# -gt 0 ]]; then
   case "${1:-}" in
     --mode|--max-parallel|--max-tasks)
@@ -135,6 +145,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Load runtime defaults only after CLI overrides are parsed so explicit caller intent
+# wins over file-backed configuration.
 MODE="${MODE:-$(runtime_get_string '.mode' 'local_threads')}"
 POLICY_MODE="${POLICY_MODE:-$(runtime_get_string '.security.policy_mode' 'enforce')}"
 DENIED_PATH_REL="$(runtime_get_string '.security.denied_events_path' 'templates/coordination/security/acl_denied.ndjson')"
@@ -178,6 +190,8 @@ if [[ ! -x "$DISPATCH_SCRIPT" ]]; then
   exit 1
 fi
 
+# Rewrite the runtime snapshot through a temp file so local capacity calculations land
+# atomically when this script adjusts concurrency settings.
 if [[ -f "$RUNTIME_CONFIG" ]]; then
   tmp_runtime="$(mktemp "$TASKS_ROOT/.runtime.XXXXXX.json")"
   jq \

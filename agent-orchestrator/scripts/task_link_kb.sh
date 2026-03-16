@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Links top knowledge-base matches into a task's metadata.
+# Inputs: task directory and search query.
+# Side effects: rewrites meta.json with deduplicated knowledge_refs.
+# Failure model: exits non-zero when task metadata is missing.
+
 if [[ $# -lt 2 ]]; then
   echo "usage: $0 <task_dir> <query>"
   exit 2
@@ -22,6 +27,7 @@ if [[ -z "$matches" ]]; then
   exit 0
 fi
 
+# Update through a temp file so concurrent readers do not see truncated JSON.
 ids_json="$(printf "%s\n" "$matches" | cut -d'|' -f1 | jq -R . | jq -s 'map(select(length>0)) | unique')"
 tmp="$(mktemp "$TASK_DIR/.meta.XXXXXX")"
 jq --argjson ids "$ids_json" '.knowledge_refs = ((.knowledge_refs // []) + $ids | unique)' "$META" > "$tmp"

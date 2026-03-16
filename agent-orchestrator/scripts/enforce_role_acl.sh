@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Evaluates whether a role may perform an action against a target path under the
+# current role policy.
+# Inputs: role, action, target, and optional task context.
+# Side effects: appends denied events and may update task ACL fields in meta.json.
+# Failure model: exits non-zero when denied in enforce mode or when usage is invalid.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 RUNTIME_CONFIG="$ROOT/templates/coordination/orchestrator/execution_runtime.json"
 BUILD_SCRIPT="$ROOT/agent-orchestrator/scripts/build_role_permissions.sh"
@@ -61,6 +67,8 @@ if [[ ! -f "$POLICY_PATH" ]]; then
   "$BUILD_SCRIPT" >/dev/null
 fi
 
+# Python handles path normalization and glob matching because the rule set is
+# easier to express safely there than in shell.
 result_json="$(python3 - "$ROOT" "$POLICY_PATH" "$ROLE" "$ACTION" "$TARGET" <<'PY'
 import json
 import os
@@ -187,6 +195,8 @@ if [[ -n "$TASK_ID" ]]; then
   fi
 fi
 
+# Warn mode logs and reports a soft denial but deliberately leaves the command
+# path successful for observability-only deployments.
 if [[ "$POLICY_MODE" == "warn" ]]; then
   jq -cn --arg status "warn" --arg role "$ROLE" --arg action "$ACTION" --arg target "$target_abs" --arg reason "$reason" --arg role_policy_version "$version" '{status:$status,role:$role,action:$action,target:$target,reason:$reason,role_policy_version:$role_policy_version}'
   exit 0

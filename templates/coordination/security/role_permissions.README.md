@@ -23,3 +23,13 @@ They are produced by:
 The generated and effective ACL documents are continuously rebuilt from role skill files plus overrides. Tracking them in version control causes the working tree to become noisy during normal operation.
 
 This README preserves the contract while allowing the generated outputs to remain operational artifacts instead of source documents.
+
+## Observer Bridge Role
+
+`observer-bridge` is a dedicated ACL role for the passive scheduler-to-core bridge path.
+
+- it may read task-local artifacts under `templates/coordination/tasks/task_folders`
+- it may write task-local bridge artifacts under the same task root
+- it may not write planner config, audit policy, orchestrator runtime config, or project workspace roots
+
+Planner authority remains owned by `planner-core`; `observer-bridge` only validates and normalizes candidate ingress artifacts.

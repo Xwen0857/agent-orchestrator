@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Builds the generated and effective role-permission policy files from role skill metadata
+# plus curated overrides.
+# Inputs: repo-local SKILL.md files and the optional overrides JSON.
+# Side effects: rewrites generated/effective permission JSON files under the security directory.
+# Failure model: exits non-zero on shell-level failures; creates a minimal overrides file when it is missing.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 SECURITY_DIR="$ROOT/templates/coordination/security"
 GENERATED="$SECURITY_DIR/role_permissions.generated.json"
@@ -9,6 +15,8 @@ EFFECTIVE="$SECURITY_DIR/role_permissions.effective.json"
 
 mkdir -p "$SECURITY_DIR"
 
+# Seed the overrides file with an empty structure so the Python merger can always
+# assume the file exists.
 if [[ ! -f "$OVERRIDES" ]]; then
   cat > "$OVERRIDES" <<'JSON'
 {
@@ -17,6 +25,8 @@ if [[ ! -f "$OVERRIDES" ]]; then
 JSON
 fi
 
+# Use Python for SKILL parsing and policy synthesis because the input combines markdown,
+# path extraction, and JSON merging that would be brittle in shell.
 python3 - "$ROOT" "$GENERATED" "$OVERRIDES" "$EFFECTIVE" <<'PY'
 import json
 import re
@@ -33,6 +43,7 @@ skills = {
     "planner-ops": root / "planner-ops/SKILL.md",
     "planner-core": root / "planner-core/SKILL.md",
     "scheduler-ops": root / "scheduler-ops/SKILL.md",
+    "observer-bridge": root / "planner-core/SKILL.md",
     "worker-delivery": root / "worker-delivery/SKILL.md",
     "tester-ephemeral": root / "tester-ephemeral/SKILL.md",
     "audit-guard": root / "audit-guard/SKILL.md",
@@ -153,6 +164,20 @@ for role, path in skills.items():
             "templates/coordination/orchestrator",
             "runtime/workdomains",
         ])
+    elif role == "observer-bridge":
+        allowed_read.extend([
+            "templates/coordination/tasks/task_folders",
+            "templates/coordination/security/role_permissions.effective.json",
+        ])
+        allowed_write.extend([
+            "templates/coordination/tasks/task_folders",
+        ])
+        forbidden.extend([
+            "templates/coordination/planner/config",
+            "templates/coordination/audit/policy",
+            "templates/coordination/orchestrator",
+            "projects",
+        ])
     elif role == "planner-core":
         allowed_write.extend([
             "templates/coordination/planner",
@@ -182,6 +207,7 @@ payload = {
         "planner-ops": "planner-ops/SKILL.md",
         "planner-core": "planner-core/SKILL.md",
         "scheduler-ops": "scheduler-ops/SKILL.md",
+        "observer-bridge": "planner-core/SKILL.md (observer bridge shell baseline)",
         "worker-delivery": "worker-delivery/SKILL.md",
         "tester-ephemeral": "tester-ephemeral/SKILL.md",
         "audit-guard": "audit-guard/SKILL.md",

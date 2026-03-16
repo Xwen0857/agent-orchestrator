@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Recomputes knowledge-base scores and lifecycle status from stored feedback.
+# Inputs: none.
+# Side effects: rewrites score/status-related metadata fields in entry markdown files.
+# Failure model: exits non-zero on Python runtime errors.
+
 ENTRIES_DIR="knowledge-base/entries"
 FEEDBACK_FILE="knowledge-base/feedback/kb_feedback.ndjson"
 
+# The scoring model is implemented in Python because it needs structured parsing
+# and repeated field updates across many markdown files.
 python3 - "$ENTRIES_DIR" "$FEEDBACK_FILE" <<'PY'
 import json
 import os

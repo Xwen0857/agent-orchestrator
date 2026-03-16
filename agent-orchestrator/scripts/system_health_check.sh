@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Builds the top-level orchestrator health report by combining task health, config drift,
+# dashboard freshness, and keeper scheduler status.
+# Inputs: optional task root, output JSON path, output markdown path, and stale threshold.
+# Side effects: rewrites system-health output files and refreshes dashboard data.
+# Failure model: exits non-zero on shell-level failures while individual sub-checks degrade into the output report.
+
 ROOT="${1:-templates/coordination/tasks/task_folders}"
 OUT_JSON="${2:-templates/coordination/orchestrator/system-health.json}"
 OUT_MD="${3:-templates/coordination/orchestrator/system-health.md}"
@@ -15,6 +21,8 @@ KEEPER_REPORT_JSON="templates/coordination/orchestrator/keeper-report.json"
 KEEPER_PID_FILE="templates/coordination/orchestrator/.keeper-scheduler.pid"
 KEEPER_LOCK_FILE="templates/coordination/orchestrator/.keeper-scheduler.lock"
 
+# Ensure output directories exist before any health aggregation starts so later writes
+# can be treated as atomic finalization steps.
 mkdir -p "$(dirname "$OUT_JSON")"
 mkdir -p "$(dirname "$OUT_MD")"
 
@@ -41,6 +49,8 @@ fi
 keeper_max_age_seconds=$((keeper_cycle_minutes * 120))
 now_epoch="$(date -u +%s)"
 
+# Task health is delegated to the lower-level checker; this script layers config and
+# keeper state on top of that subsystem report.
 health_json="$($HEALTH_SCRIPT "$ROOT" "$STALE_SEC")"
 $DASHBOARD_SCRIPT "$ROOT" >/dev/null
 

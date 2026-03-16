@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Forwards audit-stage KB feedback into the shared KB feedback recorder.
+# Inputs: entry id, task id, outcome, intervention source, auditor grade, and notes.
+# Side effects: delegates one feedback write through `kb_record_feedback.sh`.
+# Failure model: exits non-zero on invalid args or delegated script failure.
+
 if [[ $# -lt 6 ]]; then
   echo "usage: $0 <entry_id> <task_id> <outcome> <intervention_source> <auditor_grade> <notes>"
   exit 2

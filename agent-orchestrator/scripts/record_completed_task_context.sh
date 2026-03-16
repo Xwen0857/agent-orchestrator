@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Records a compact summary of a closed task into the completed-context index.
+# Inputs: task directory.
+# Side effects: rewrites completed_context.ndjson and completed_context.latest.json.
+# Failure model: exits non-zero when task metadata is missing or Python processing fails.
+
 if [[ $# -lt 1 ]]; then
   echo "usage: $0 <task_dir>"
   exit 2
@@ -22,6 +27,8 @@ INDEX_FILE="$ROOT/templates/coordination/tasks/completed_context.ndjson"
 LATEST_FILE="$ROOT/templates/coordination/tasks/completed_context.latest.json"
 mkdir -p "$(dirname "$INDEX_FILE")"
 
+# Python collects task, workspace, and tester context into a normalized record
+# and de-duplicates by task id when rewriting the index.
 python3 - "$ROOT" "$TASK_DIR" "$META" "$STRATEGY" "$WORK_MD" "$RESULT_JSON" "$INDEX_FILE" "$LATEST_FILE" <<'PY'
 import json
 import re
@@ -130,4 +137,3 @@ index_file.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in 
 latest_file.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 print(json.dumps({"status": "ok", "task_id": task_id, "index": str(index_file), "count": len(rows)}))
 PY
-

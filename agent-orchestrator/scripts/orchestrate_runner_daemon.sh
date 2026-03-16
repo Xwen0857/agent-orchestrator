@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Manages a background loop that repeatedly runs `orchestrate_multi_once.sh`.
+# Inputs: action (`start|stop|status`) plus optional interval or status format.
+# Side effects: spawns or stops a background process, writes pid/state files, and appends
+# runner logs under the orchestrator state directory.
+# Failure model: exits non-zero on invalid args, bad intervals, or missing runner dependencies.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 MULTI_ONCE_SCRIPT="$ROOT/agent-orchestrator/scripts/orchestrate_multi_once.sh"
 TASKS_ROOT_DEFAULT="$ROOT/templates/coordination/tasks/task_folders"
@@ -14,6 +20,7 @@ INTERVAL_SEC="${RUNNER_INTERVAL_SEC:-10}"
 TASKS_ROOT="${TASKS_ROOT:-$TASKS_ROOT_DEFAULT}"
 STATUS_FORMAT="${2:-text}"
 
+# Keep usage centralized so all invalid command shapes fail through one path.
 usage() {
   cat <<'EOF'
 usage:
@@ -40,6 +47,8 @@ EOF
   done
 }
 
+# Treat the pid file as advisory and verify the process is still alive before
+# reporting the runner as active.
 is_running() {
   [[ -f "$PID_FILE" ]] || return 1
   local pid
@@ -65,6 +74,7 @@ start_runner() {
     exit 0
   fi
 
+  # Re-exec this script in `_loop` mode so start/stop/status share one implementation.
   nohup "$0" _loop "$interval" >/dev/null 2>&1 &
   local pid="$!"
   echo "$pid" > "$PID_FILE"

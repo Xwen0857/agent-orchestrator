@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Saves the current planner config as a versioned snapshot and updates the
+# version pointer metadata.
+# Inputs: required version id plus optional actor and reason.
+# Side effects: copies current.md into history and appends to versions.ndjson.
+# Failure model: exits non-zero on lock contention, invalid ids, or missing config.
+
 if [[ $# -lt 1 ]]; then
   echo "usage: $0 <version_id> [actor] [reason]"
   exit 2
@@ -20,6 +26,8 @@ TARGET_FILE="$HISTORY_DIR/$VERSION_ID.md"
 
 mkdir -p "$HISTORY_DIR"
 
+# Use a noclobber lock file so snapshot and rollback cannot mutate the pointer
+# concurrently.
 acquire_lock() {
   local i=0
   while ! (set -o noclobber; echo "$$" > "$LOCK_FILE") 2>/dev/null; do
@@ -54,6 +62,8 @@ if [[ -f "$TARGET_FILE" ]]; then
   exit 1
 fi
 
+# Copy the exact current config before recomputing pointer metadata so the
+# archived file always matches the recorded checksum.
 cp "$CURRENT_CONFIG" "$TARGET_FILE"
 now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 checksum="$(shasum -a 256 "$TARGET_FILE" | awk '{print $1}')"
@@ -64,6 +74,8 @@ else
   previous_version_id=""
 fi
 
+# Rewrite the pointer file in one pass so readers never observe a partially
+# updated metadata shape.
 jq -n \
   --arg current_version_id "$VERSION_ID" \
   --arg previous_version_id "$previous_version_id" \
@@ -80,6 +92,8 @@ jq -n \
     updated_by: $updated_by
   }' > "$POINTER_FILE"
 
+# Append-only audit history preserves snapshot lineage without rewriting
+# existing events.
 jq -cn \
   --arg timestamp "$now" \
   --arg action "SNAPSHOT" \
