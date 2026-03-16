@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Audits an aggregate delivery staging area before promotion.
+# Inputs: parent task directory and parent run root.
+# Side effects: rewrites aggregate_audit.json.
+# Failure model: exits non-zero when the audit detects integrity or collision issues.
+
 usage() {
   echo "usage: $0 --task-dir <parent_task_dir> --run-root <parent_run_root>"
   exit 2
@@ -34,6 +39,8 @@ MANIFEST_PATH="$RUN_ROOT/delivery_staging_manifest.json"
 STAGING_ROOT="$RUN_ROOT/delivery_staging"
 AUDIT_PATH="$TASK_DIR/aggregate_audit.json"
 
+# Python performs the structured manifest and integrity checks, then writes a
+# single audit document consumed by promotion/rollback logic.
 python3 - "$TASK_DIR" "$RUN_ROOT" "$MANIFEST_PATH" "$STAGING_ROOT" "$AUDIT_PATH" <<'PY'
 import hashlib
 import json
@@ -138,4 +145,3 @@ print(json.dumps({"status": status, "audit_path": str(audit_path), "reasons": re
 if status != "PASS":
     raise SystemExit(1)
 PY
-

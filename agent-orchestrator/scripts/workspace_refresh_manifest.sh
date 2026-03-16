@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Rebuilds the manifest snapshot for a task run root and reports file-level
+# changes since the prior snapshot.
+# Inputs: run root and optional snapshot id.
+# Side effects: rewrites manifest.lock.json.
+# Failure model: exits non-zero on invalid usage or Python runtime errors.
+
 if [[ $# -lt 1 ]]; then
   echo "usage: $0 <run_root> [snapshot_id]"
   exit 2
@@ -12,6 +18,8 @@ MANIFEST="$RUN_ROOT/manifest.lock.json"
 
 mkdir -p "$RUN_ROOT"
 
+# Python handles recursive hashing and diffing so the shell wrapper can keep a
+# stable JSON interface.
 python3 - "$RUN_ROOT" "$MANIFEST" "$SNAPSHOT_ID" <<'PY'
 import hashlib
 import json

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Builds a keeper inbox candidate by scanning a task run workspace for likely
+# reusable text/code artifacts.
+# Inputs: task id, run root, and optional file/byte limits.
+# Side effects: writes a pending candidate JSON unless preview mode is enabled.
+# Failure model: exits non-zero when required args are invalid or run_root is missing.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 
 TASK_ID=""
@@ -31,6 +37,8 @@ done
 PENDING_DIR="$ROOT/knowledge-base/inbox/pending"
 mkdir -p "$PENDING_DIR"
 
+# Python performs the bounded recursive scan and emits a summary payload that
+# can be previewed or persisted unchanged.
 python3 - "$TASK_ID" "$RUN_ROOT" "$MAX_FILES" "$MAX_BYTES" "$PREVIEW" "$PENDING_DIR" <<'PY'
 import json
 import os

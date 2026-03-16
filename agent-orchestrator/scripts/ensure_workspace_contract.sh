@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Materializes the per-task workspace/run directory contract and runtime-profile files
+# before worker or tester execution begins.
+# Inputs: task directory and an optional execution profile.
+# Side effects: creates run/workspace directories, writes runtime profile metadata,
+# seeds dependency/convention files, and refreshes the workspace manifest.
+# Failure model: exits non-zero on missing task metadata, invalid workspace hints, or contract write failures.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 RUNTIME_CONFIG="$ROOT/templates/coordination/orchestrator/execution_runtime.json"
 REFRESH_SCRIPT="$ROOT/agent-orchestrator/scripts/workspace_refresh_manifest.sh"
@@ -39,6 +46,8 @@ PROJ_MCP_REL="$(jq -r '.agent_runtime_isolation.project_namespace.mcp_dir // ".o
 PROJ_CONFIG_REL="$(jq -r '.agent_runtime_isolation.project_namespace.config_dir // ".openclaw-project/config"' "$RUNTIME_CONFIG" 2>/dev/null || echo ".openclaw-project/config")"
 ORCH_READ_ONLY="$(jq -r '.agent_runtime_isolation.orchestrator_namespace.read_only // true' "$RUNTIME_CONFIG" 2>/dev/null || echo true)"
 
+# A workspace_root_hint may override the generated runtime default, but it must stay
+# inside the configured projects root.
 if [[ -n "$WORKSPACE_ROOT_HINT" ]]; then
   if [[ "$WORKSPACE_ROOT_HINT" == /* ]]; then
     echo "workspace_root_hint must be relative: $WORKSPACE_ROOT_HINT"
@@ -61,6 +70,8 @@ if [[ -n "$WORKSPACE_ROOT_HINT" ]]; then
   WORKSPACE_ROOT="$WORKSPACE_CANDIDATE"
 fi
 
+# Create the full runtime layout before writing any contract files so later steps can
+# assume a complete directory structure.
 mkdir -p \
   "$WORKSPACE_ROOT" \
   "$RUN_ROOT/delivery" \
@@ -80,6 +91,8 @@ PROJ_SKILLS="$RUN_ROOT/$PROJ_SKILLS_REL"
 PROJ_MCP="$RUN_ROOT/$PROJ_MCP_REL"
 PROJ_CONFIG="$RUN_ROOT/$PROJ_CONFIG_REL"
 
+# Runtime isolation writes one profile file that maps orchestrator and project
+# namespaces to explicit environment variables consumed by the sandbox wrapper.
 if [[ "$ISOLATION_ENABLED" == "true" ]]; then
   mkdir -p \
     "$ORCH_ROOT" "$ORCH_SKILLS" "$ORCH_MCP" "$ORCH_CONFIG" \

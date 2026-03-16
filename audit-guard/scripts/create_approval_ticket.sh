@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Creates a pending approval ticket markdown file for a blocked operation.
+# Inputs: task dir, requesting agent, risk tier, operation summary, impact scope, and matched rules.
+# Side effects: writes one approval ticket under the audit approvals directory.
+# Failure model: exits non-zero on invalid args or missing task metadata.
+
 if [[ $# -lt 6 ]]; then
   echo "usage: $0 <task_dir> <requested_by_agent> <risk_tier> <operation_summary> <impact_scope> <matched_rules_csv>"
   exit 2
@@ -27,6 +32,8 @@ timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 approval_id="APR-$(date -u +%Y%m%d-%H%M%S)-$$"
 ticket="$APPROVAL_DIR/$approval_id.md"
 
+# The ticket markdown is the operator-facing approval artifact referenced later by
+# grant and validation flows.
 cat > "$ticket" <<EOF
 # Approval Request
 

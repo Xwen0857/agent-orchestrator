@@ -1,4 +1,21 @@
 {
+  "planner_agent": {
+    "llm_role": "primary",
+    "token_priority": {
+      "tier": "highest",
+      "reserved_ratio": 0.35,
+      "min_planning_tokens": 1200,
+      "max_planning_tokens": 6000,
+      "allow_inline_override": true
+    },
+    "mcp_soft_boundary": {
+      "mode": "bias_plan",
+      "include_namespace": true,
+      "include_read_only": true,
+      "include_profile_name": true,
+      "include_isolation_enabled": true
+    }
+  },
   "llm": {
     "enabled": false,
     "auth_mode": "auto",

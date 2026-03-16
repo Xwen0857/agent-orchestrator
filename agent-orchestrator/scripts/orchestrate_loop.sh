@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Repeats `orchestrate_once.sh` on a fixed interval for daemon-like local scheduling.
+# Inputs: optional tasks root, interval in seconds, and iteration count (0 means infinite).
+# Side effects: repeatedly invokes the single-cycle orchestrator against the same task root.
+# Failure model: exits non-zero if the child script is missing or the loop parameters are invalid.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 ONCE_SCRIPT="$ROOT/agent-orchestrator/scripts/orchestrate_once.sh"
 TASKS_ROOT="${1:-$ROOT/templates/coordination/tasks/task_folders}"
@@ -19,6 +24,8 @@ fi
 
 count=0
 while true; do
+  # Delegate each tick to the single-cycle orchestrator so one code path owns
+  # task selection and state transitions.
   "$ONCE_SCRIPT" "$TASKS_ROOT"
   count=$((count + 1))
 

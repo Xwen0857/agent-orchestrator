@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Records a summary of workspace delta information into the task audit trail.
+# Inputs: task directory.
+# Side effects: appends an audit section to `audit.md`, updates the workspace snapshot file,
+# and optionally appends one audit event to the task log.
+# Failure model: exits non-zero on missing required task artifacts; degrades to "skipped" JSON when workspace context is absent.
+
 if [[ $# -lt 1 ]]; then
   echo "usage: $0 <task_dir>"
   exit 2
@@ -37,6 +43,8 @@ if [[ "$CUR_SNAPSHOT_ID" == "$PREV_SNAPSHOT_ID" && -n "$CUR_SNAPSHOT_ID" ]]; the
   exit 0
 fi
 
+# Append a human-readable audit summary while the JSON snapshot file stores the
+# machine-readable cursor used to suppress duplicate audits.
 CHANGED_COUNT="$(jq -r '.changed_count // 0' "$MANIFEST")"
 CHANGED_FILES="$(jq -r '(.changed_files // []) | map("\(.change):\(.path)") | .[0:20] | join(", ")' "$MANIFEST")"
 if [[ -z "$CHANGED_FILES" ]]; then

@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Evaluates whether an operation request should be allowed, monitored, or blocked
+# pending approval based on task risk, budget usage, and requested action flags.
+# Inputs: task directory and an operation request JSON file.
+# Side effects: may transition the task into `BLOCKED_PENDING_APPROVAL`, create an
+# approval ticket, append a gate event, and append a gate section to `audit.md`.
+# Failure model: exits non-zero on missing inputs, failed task blocking, or failed gate-event logging.
+
 if [[ $# -lt 2 ]]; then
   echo "usage: $0 <task_dir> <operation_request.json>"
   exit 2
@@ -57,6 +64,8 @@ triggers=()
 risk_tier="MONITORED"
 decision="ALLOW"
 
+# Collect all risk triggers first, then resolve the final gate decision from the
+# combined trigger set and any existing approval scope.
 if [[ "$RISK_LEVEL" == "HIGH" || "$RISK_LEVEL" == "CRITICAL" ]]; then
   triggers+=("risk_level=$RISK_LEVEL")
   risk_tier="HIGH"

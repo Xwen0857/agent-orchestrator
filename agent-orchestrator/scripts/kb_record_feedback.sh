@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Appends a knowledge-base feedback event for later scoring and auditing.
+# Inputs: entry/task ids, actor, outcome, intervention source, grade, reused
+# flag, and notes.
+# Side effects: appends a JSON line to kb_feedback.ndjson.
+# Failure model: exits non-zero when enum-like arguments are invalid.
+
 if [[ $# -lt 8 ]]; then
   echo "usage: $0 <entry_id> <task_id> <actor> <outcome> <intervention_source> <auditor_grade> <reused:true|false> <notes>"
   exit 2
@@ -47,6 +53,7 @@ if [[ "$REUSED" != "true" && "$REUSED" != "false" ]]; then
   exit 1
 fi
 
+# Persist feedback as append-only NDJSON so scoring can recompute from history.
 jq -cn \
   --arg timestamp "$NOW" \
   --arg entry_id "$ENTRY_ID" \

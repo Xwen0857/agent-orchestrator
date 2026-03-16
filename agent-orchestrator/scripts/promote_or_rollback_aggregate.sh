@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Publishes or rolls back an aggregate delivery bundle for a parent task run.
+# Inputs: parent task dir, parent run root, mode, and an optional reason string.
+# Side effects: moves staged delivery trees, copies rollback evidence, and rewrites
+# aggregate metadata inside the parent task record.
+# Failure model: exits non-zero on invalid args, failed audit preconditions, or filesystem errors.
+
 usage() {
   echo "usage: $0 --task-dir <parent_task_dir> --run-root <parent_run_root> --mode <promote|rollback> --reason <text>"
   exit 2
@@ -50,6 +56,7 @@ DELIVERY_ROOT="$RUN_ROOT/delivery"
 EVIDENCE_ROOT="$RUN_ROOT/evidence"
 TS="$(date -u +%Y%m%d%H%M%S)"
 
+# Update metadata through a temporary file so aggregate publish state is never partially written.
 update_meta() {
   local publish_status="$1"
   local reason="$2"
@@ -83,6 +90,7 @@ if [[ "$MODE" == "promote" ]]; then
   [[ -d "$STAGING_ROOT" ]] || { echo "staging root missing: $STAGING_ROOT"; exit 1; }
   mkdir -p "$EVIDENCE_ROOT/release_backup"
   if [[ -d "$DELIVERY_ROOT" ]]; then
+    # Preserve the previous release before replacing it with the new staging tree.
     mv "$DELIVERY_ROOT" "$EVIDENCE_ROOT/release_backup/delivery_${TS}"
   fi
   mv "$STAGING_ROOT" "$DELIVERY_ROOT"
@@ -93,6 +101,7 @@ fi
 
 mkdir -p "$EVIDENCE_ROOT/aggregate_failed/$TS"
 if [[ -d "$STAGING_ROOT" ]]; then
+  # Keep a forensic copy of the failed staging output before deleting it from the live run root.
   cp -R "$STAGING_ROOT/." "$EVIDENCE_ROOT/aggregate_failed/$TS/" 2>/dev/null || true
   rm -rf "$STAGING_ROOT"
 fi
@@ -105,4 +114,3 @@ fi
 
 update_meta "rolled_back" "${REASON:-aggregate rollback}" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 jq -cn --arg status "ok" --arg mode "$MODE" --arg evidence "$EVIDENCE_ROOT/aggregate_failed/$TS" '{status:$status,mode:$mode,evidence:$evidence}'
-

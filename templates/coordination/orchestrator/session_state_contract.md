@@ -33,6 +33,3 @@ Primary schemas:
 - Backward compatibility is schema-version based.
 - Unknown fields must be ignored by consumers.
 - New required fields require schema version bump.
-- Session state is only the authority for session-local draft and receptionist capture state.
-- `draft.requested_mode` is a legacy compatibility hint; planner mode authority lives in planner decision/replan contracts, not session projection.
-- Running-task requirement amendments must not use session files or `amendments.md` as authority; task-folder authority remains `meta.json` + `log.ndjson`.

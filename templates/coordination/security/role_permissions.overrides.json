@@ -10,6 +10,21 @@
         "projects"
       ]
     },
+    "observer-bridge": {
+      "allowed_read_paths": [
+        "templates/coordination/tasks/task_folders",
+        "templates/coordination/security/role_permissions.effective.json"
+      ],
+      "allowed_write_paths": [
+        "templates/coordination/tasks/task_folders"
+      ],
+      "forbidden_paths": [
+        "templates/coordination/planner/config",
+        "templates/coordination/audit/policy",
+        "templates/coordination/orchestrator",
+        "projects"
+      ]
+    },
     "planner-ops": {
       "allowed_read_paths": [
         "projects"

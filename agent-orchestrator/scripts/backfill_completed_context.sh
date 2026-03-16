@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Replays completed tasks through the completed-context recorder.
+# Inputs: optional active tasks root and archive root.
+# Side effects: appends completed-context records for eligible closed tasks.
+# Failure model: exits non-zero when the recorder script is unavailable.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 TASKS_ROOT="${1:-$ROOT/templates/coordination/tasks/task_folders}"
 ARCHIVE_ROOT="${2:-$ROOT/templates/coordination/tasks/archive}"
@@ -17,6 +22,8 @@ failed=0
 scan_root() {
   local root="$1"
   [[ -d "$root" ]] || return 0
+  # Only closed tasks are eligible; open tasks should not be snapshotted into
+  # completed context.
   while IFS= read -r -d '' meta; do
     task_dir="${meta%/meta.json}"
     state="$(jq -r '.state // ""' "$meta" 2>/dev/null || true)"
