@@ -172,7 +172,7 @@ describe("planner_resume_hard_replan integration", () => {
     expect((meta.runtime_replan as Record<string, unknown>).consume_status).toBe("ready");
     expect(meta.workspace_last_sync_reason).toBe("receptionist_amendment_batch_resumed");
     expect(meta.dirty_state).toBe(false);
-    expect(response).toContain("runtime recovery authorized after hard-tier amendment");
-    expect(log).toContain("RUNTIME_RECOVERY_APPLIED");
+    expect(response).toContain("planner updated worker strategy");
+    expect(log).toContain("PLANNER_REPLAN_RESUMED");
   });
 });

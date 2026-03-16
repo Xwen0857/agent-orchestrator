@@ -32,6 +32,9 @@ describe("orchestrate-bootstrap-context", () => {
 
     expect(ctx.eventsPath).toBe("/tmp/state/plugins/orchestrator-dashboard/events.ndjson");
     expect(ctx.paths.dashboardJson).toBe("/repo/templates/coordination/orchestrator/dashboard.json");
+    expect(ctx.paths.entryAgentDecodeContract).toBe(
+      "/repo/templates/coordination/orchestrator/entry_agent_decode_contract.md",
+    );
     expect(ctx.runtimeSignatureFiles).toHaveLength(3);
     expect(ctx.externalRunnerScriptPath).toBe("/repo/agent-orchestrator/scripts/orchestrate_runner_daemon.sh");
   });

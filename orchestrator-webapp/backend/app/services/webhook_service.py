@@ -1,3 +1,8 @@
+"""Webhook subscription storage and delivery for backend events.
+
+This module persists subscriptions, signs outbound requests, and writes deadletter
+records when delivery retries are exhausted.
+"""
 from __future__ import annotations
 
 import hashlib
@@ -13,18 +18,23 @@ from app.services.file_store import append_ndjson, read_json, write_json_atomic
 
 
 class WebhookService:
+    """Create/list subscriptions and deliver events with signed HTTP POST retries."""
+
     def __init__(self, store_path, deadletter_path) -> None:
         self.store_path = store_path
         self.deadletter_path = deadletter_path
 
     def _load(self) -> dict[str, Any]:
+        """Load the subscription store with a stable empty default."""
         return read_json(self.store_path, default={"subscriptions": []})
 
     def list(self) -> list[WebhookSubscription]:
+        """Return all webhook subscriptions as validated models."""
         data = self._load()
         return [WebhookSubscription.model_validate(x) for x in data.get("subscriptions", [])]
 
     def create(self, req: CreateWebhookSubscriptionRequest) -> WebhookSubscription:
+        """Persist a new webhook subscription and return the non-secret response model."""
         data = self._load()
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         item = {
@@ -44,6 +54,7 @@ class WebhookService:
         return WebhookSubscription.model_validate(clean)
 
     def deliver(self, event: EventRecord) -> None:
+        """Deliver one event to all enabled subscriptions that match the event-type filter."""
         data = self._load()
         for sub in data.get("subscriptions", []):
             if not sub.get("enabled", True):
@@ -54,6 +65,7 @@ class WebhookService:
             self._send_with_retry(sub, event)
 
     def _send_with_retry(self, sub: dict[str, Any], event: EventRecord) -> None:
+        """Send one event with retries, then deadletter it if all attempts fail."""
         payload = event.model_dump()
         body = json.dumps(payload).encode("utf-8")
         secret = sub.get("secret", "")
@@ -77,6 +89,8 @@ class WebhookService:
                         return
             except Exception as exc:
                 if attempt >= max_retries:
+                    # Deadletter preserves the final delivery error and the dropped event payload
+                    # so operators can inspect what failed.
                     append_ndjson(
                         self.deadletter_path,
                         {

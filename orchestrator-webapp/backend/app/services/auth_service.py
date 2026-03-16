@@ -1,3 +1,4 @@
+"""Header-based user and role resolution helpers for the backend API."""
 from __future__ import annotations
 
 from fastapi import Header, HTTPException
@@ -17,6 +18,7 @@ def resolve_user(
     x_email: str | None = Header(default=None),
     x_role: str | None = Header(default=None),
 ) -> UserContext:
+    """Resolve the request user from headers and normalize it into a `UserContext`."""
     user_id = (x_user or "anonymous").strip()
     email = (x_email or f"{user_id}@local").strip()
     role_key = (x_role or "viewer").strip().lower()
@@ -26,5 +28,6 @@ def resolve_user(
 
 
 def require_role(user: UserContext, allowed: set[Role]) -> None:
+    """Raise when the current user does not hold one of the required roles."""
     if user.role not in allowed:
         raise HTTPException(status_code=403, detail="insufficient role")

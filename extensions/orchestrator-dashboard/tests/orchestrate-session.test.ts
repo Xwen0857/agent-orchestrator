@@ -292,51 +292,6 @@ describe("orchestrate-session pure logic", () => {
     });
   });
 
-  it("keeps summary normalization stable when optional mode fields are absent", () => {
-    const summary = normalizeOrchestrateSummary(
-      {
-        summary_id: "sum_missing_mode",
-        created_at: "2026-02-28T09:05:00.000Z",
-        version: 2,
-        status: "confirmed",
-        content: {
-          task_goal: "ship it",
-          project_id: "prj_demo",
-          workspace_root: "apps/demo",
-          risk_level: "LOW",
-          budget: {
-            max_token_cost: 800,
-            max_execution_time_seconds: 120,
-          },
-          constraints: ["keep"],
-          deliverables: ["tests"],
-          notes: ["note"],
-        },
-      },
-      { now: "2026-02-28T09:05:00.000Z" },
-    );
-
-    expect(summary).toEqual({
-      summary_id: "sum_missing_mode",
-      created_at: "2026-02-28T09:05:00.000Z",
-      version: 2,
-      status: "confirmed",
-      content: {
-        task_goal: "ship it",
-        project_id: "prj_demo",
-        workspace_root: "apps/demo",
-        risk_level: "LOW",
-        budget: {
-          max_token_cost: 800,
-          max_execution_time_seconds: 120,
-        },
-        constraints: ["keep"],
-        deliverables: ["tests"],
-        notes: ["note"],
-      },
-    });
-  });
-
   it("normalizes malformed stored sessions and preserves schema compatibility", () => {
     const fallback = buildEmptyOrchestrateSession(
       {
@@ -449,63 +404,6 @@ describe("orchestrate-session pure logic", () => {
     ]);
   });
 
-  it("keeps session normalization runnable when optional mode fields are absent", () => {
-    const fallback = buildEmptyOrchestrateSession(
-      {
-        sessionKey: "fallback-session",
-        channel: "unknown",
-        senderId: "unknown",
-      },
-      { now: "2026-02-28T09:10:00.000Z" },
-    );
-
-    const session = normalizeOrchestrateSession(
-      {
-        session_key: "sess_missing_mode",
-        channel: "chat",
-        sender_id: "user-1",
-        status: "SUMMARY_READY",
-        draft: {
-          task_goal: "build feature",
-          risk_level: "LOW",
-          constraints: ["one"],
-          deliverables: ["artifact"],
-          notes: ["note"],
-          budget: {
-            max_token_cost: 700,
-            max_execution_time_seconds: 120,
-          },
-        },
-        latest_summary: {
-          summary_id: "sum_2",
-          created_at: "2026-02-28T09:13:00.000Z",
-          version: 2,
-          status: "confirmed",
-          content: {
-            task_goal: "ship",
-            risk_level: "LOW",
-            budget: {
-              max_token_cost: 700,
-              max_execution_time_seconds: 120,
-            },
-          },
-        },
-        last_run: {
-          task_id: "task_1",
-          started_at: "2026-02-28T09:14:00.000Z",
-          summary_id: "sum_2",
-        },
-      },
-      {
-        fallbackSession: fallback,
-        now: "2026-02-28T09:15:00.000Z",
-      },
-    );
-
-    const runnable = getRunnableSummary(session);
-    expect(runnable.ok).toBe(true);
-  });
-
   it("extracts the latest usable user message from mixed message payloads", () => {
     expect(
       extractLatestUserMessage([
@@ -558,13 +456,22 @@ describe("orchestrate-session pure logic", () => {
     const context = buildEntryAgentContext(session);
 
     expect(context).toContain("You are currently acting as the orchestrate receptionist");
-    expect(context).toContain("- task_goal: Ship dashboard");
-    expect(context).toContain("- project_id: prj_demo");
-    expect(context).toContain("- workspace_root: apps/demo");
-    expect(context).toContain("- risk_level: HIGH");
-    expect(context).toContain("- budget: 1200,90");
-    expect(context).toContain("- planner_ingress: auto-only");
-    expect(context).toContain("- initial_split_decision: planner-managed");
-    expect(context).toContain("- deliverables: RUNBOOK.md, tests");
+    expect(context).toContain("Do not execute the task. Do not create tasks automatically.");
+    expect(context).not.toContain("Current draft:");
+
+    const withMeta = buildEntryAgentContext(
+      session,
+      ['BEGIN_ORCHESTRATE_AGENT_META', '{"schema_version":"orchestrate-agent-meta-v1"}', "END_ORCHESTRATE_AGENT_META"].join(
+        "\n",
+      ),
+      [
+        "BEGIN_ORCHESTRATE_AGENT_DECODE_CONTRACT",
+        "# contract",
+        "END_ORCHESTRATE_AGENT_DECODE_CONTRACT",
+      ].join("\n"),
+    );
+    expect(withMeta).toContain("BEGIN_ORCHESTRATE_AGENT_DECODE_CONTRACT");
+    expect(withMeta).toContain("BEGIN_ORCHESTRATE_AGENT_META");
+    expect(withMeta).toContain('"schema_version":"orchestrate-agent-meta-v1"');
   });
 });

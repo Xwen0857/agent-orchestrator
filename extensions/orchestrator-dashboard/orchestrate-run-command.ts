@@ -18,6 +18,7 @@ import {
   type ExternalRunnerSnapshot,
   type RuntimeStatsSnapshot,
 } from "./orchestrate-response.js";
+import { extractPlannerDecision } from "./orchestrate-planner-contract.js";
 import { buildRunSuccessResponseParams } from "./orchestrate-view-model.js";
 import type { RuntimeConsistencySnapshot } from "./orchestrate-runtime-consistency.js";
 import type { RunnerSnapshot } from "./orchestrate-runner-runtime.js";
@@ -148,6 +149,7 @@ export async function handleRunSubcommand(
     latestSummary.summary_id,
   );
   const taskDir = path.join(params.paths.taskFoldersRoot, taskId);
+  const taskFoldersRootArg = path.relative(params.repoRoot, params.paths.taskFoldersRoot) || ".";
   const taskDirArg = path.relative(params.repoRoot, taskDir);
   const strategyPathArg = path.relative(params.repoRoot, strategyPath);
   const scriptTrace: string[] = [];
@@ -157,7 +159,7 @@ export async function handleRunSubcommand(
     const created = await params.runWhitelistedScript({
       repoRoot: params.repoRoot,
       scriptName: "create_task_from_strategy",
-      args: [strategyPathArg],
+      args: [strategyPathArg, taskFoldersRootArg],
     });
     scriptTrace.push(
       `create_task_from_strategy: ${params.trimOutput(created.stdout || created.stderr || "ok")}`,
@@ -172,36 +174,6 @@ export async function handleRunSubcommand(
       summary_path: summaryPath,
       input_source: "session_summary",
     });
-    await params.writeJsonAtomic(strategyPath, {
-      ...strategy,
-      status: "drafted",
-      summary_id: latestSummary.summary_id,
-      summary_path: summaryPath,
-      input_source: "session_summary",
-    });
-
-    const now = new Date().toISOString();
-    await params.writeOrchestrateSession({
-      ...activeSession,
-      status: "RUNNING",
-      updated_at: now,
-      latest_summary: {
-        ...latestSummary,
-        status: "consumed",
-      },
-      last_run: {
-        task_id: taskId,
-        started_at: now,
-        summary_id: latestSummary.summary_id,
-      },
-    });
-    await params.emitEvent("orchestrate.session.run_started", {
-      session_key: sessionKeyForRun,
-      summary_id: latestSummary.summary_id,
-      summary_path: summaryPath,
-      task_id: taskId,
-    });
-
     const planned = await params.runWhitelistedScript({
       repoRoot: params.repoRoot,
       scriptName: "planner_entry",
@@ -241,16 +213,12 @@ export async function handleRunSubcommand(
     });
     scriptTrace.push(`dashboard_summary: ${params.trimOutput(dashboard.stdout || dashboard.stderr || "ok")}`);
 
-    await params.writeJsonAtomic(strategyPath, {
-      ...strategy,
-      status: "applied",
-      summary_id: latestSummary.summary_id,
-      summary_path: summaryPath,
-      input_source: "session_summary",
-    });
-
     const meta = await params.readJsonOrDefault<Record<string, unknown>>(
       path.join(taskDir, "meta.json"),
+      {},
+    );
+    const splitPlan = await params.readJsonOrDefault<Record<string, unknown>>(
+      path.join(taskDir, "split_plan.json"),
       {},
     );
     const runnerInfo = await params.ensureRunnerStarted();
@@ -260,12 +228,55 @@ export async function handleRunSubcommand(
     ]);
     const runnerSnapshot = params.runtime.getRunnerSnapshot();
     const consistencySnapshot = params.runtime.getConsistencySnapshot();
-    const planningDecisionMeta =
-      meta.planning_decision &&
-      typeof meta.planning_decision === "object" &&
-      !Array.isArray(meta.planning_decision)
-        ? (meta.planning_decision as Record<string, unknown>)
+    const planningDecisionMeta = extractPlannerDecision(meta.planning_decision);
+    const initialPartition =
+      splitPlan.initial_partition &&
+      typeof splitPlan.initial_partition === "object" &&
+      !Array.isArray(splitPlan.initial_partition)
+        ? (splitPlan.initial_partition as Record<string, unknown>)
         : {};
+    const initialMetaUnits = Array.isArray(initialPartition.modules)
+      ? initialPartition.modules.length
+      : 0;
+    const initialSplitStrategy = String(
+      initialPartition.strategy ??
+        planningDecisionMeta.meta_decomposition?.decomposition_strategy ??
+        (initialMetaUnits > 1 ? "meta_module_partition" : "meta_single_unit"),
+    );
+    const workerRefinementRequired = planningDecisionMeta.worker_refinement?.required === true;
+    const workerRefinementScope = String(
+      planningDecisionMeta.worker_refinement?.refinement_scope ??
+        (initialMetaUnits > 1
+          ? "multi_meta_input"
+          : "single_meta_input"),
+    );
+    const workerRefinementStrategy = String(
+      planningDecisionMeta.worker_refinement?.refinement_strategy ??
+        "linear_split_units_placeholder",
+    );
+    const initialDecouplingPrinciple = String(
+      planningDecisionMeta.meta_decomposition?.primary_principle ?? "functional_decoupling",
+    );
+    const initialDecouplingConfidence = String(
+      planningDecisionMeta.meta_decomposition?.decoupling_confidence ?? "low",
+    );
+    const initialDecouplingRationale = Array.isArray(
+      planningDecisionMeta.meta_decomposition?.decoupling_rationale,
+    )
+      ? planningDecisionMeta.meta_decomposition?.decoupling_rationale.map((entry) => String(entry))
+      : [];
+    const workerRefinementPrinciple = String(
+      planningDecisionMeta.worker_refinement?.primary_principle ?? "engineering_decoupling",
+    );
+    const granularityGuardrails =
+      planningDecisionMeta.granularity_guardrails &&
+      typeof planningDecisionMeta.granularity_guardrails === "object"
+        ? (planningDecisionMeta.granularity_guardrails as Record<string, unknown>)
+        : {};
+    const granularityGuardrailTriggered = granularityGuardrails.guardrail_triggered === true;
+    const granularityGuardrailNotes = Array.isArray(granularityGuardrails.guardrail_notes)
+      ? granularityGuardrails.guardrail_notes.map((entry) => String(entry))
+      : [];
     const aggregateMeta =
       meta.aggregate && typeof meta.aggregate === "object" && !Array.isArray(meta.aggregate)
         ? (meta.aggregate as Record<string, unknown>)
@@ -276,6 +287,32 @@ export async function handleRunSubcommand(
       !Array.isArray(meta.execution_roles)
         ? (meta.execution_roles as Record<string, unknown>)
         : {};
+    const now = new Date().toISOString();
+    await params.writeOrchestrateSession({
+      ...activeSession,
+      status: "RUNNING",
+      updated_at: now,
+      receptionist: {
+        ...activeSession.receptionist,
+        active: true,
+        amendment_queue_open: false,
+      },
+      latest_summary: {
+        ...latestSummary,
+        status: "consumed",
+      },
+      last_run: {
+        task_id: taskId,
+        started_at: now,
+        summary_id: latestSummary.summary_id,
+      },
+    });
+    await params.emitEvent("orchestrate.session.run_started", {
+      session_key: sessionKeyForRun,
+      summary_id: latestSummary.summary_id,
+      summary_path: summaryPath,
+      task_id: taskId,
+    });
     const appliedPayload = {
       task_id: taskId,
       orchestrate_session_key: sessionKeyForRun,
@@ -296,6 +333,18 @@ export async function handleRunSubcommand(
       runner_max_parallel: runnerSnapshot.runnerMaxParallel,
       logical_threads: runtimeStats.logicalThreads,
       effective_worker_threads: runtimeStats.effectiveWorkerThreads,
+      initial_partition_strategy: initialSplitStrategy,
+      initial_meta_units: initialMetaUnits,
+      initial_partition_expanded: initialMetaUnits > 1,
+      initial_decoupling_principle: initialDecouplingPrinciple,
+      initial_decoupling_confidence: initialDecouplingConfidence,
+      initial_decoupling_rationale: initialDecouplingRationale,
+      worker_refinement_required: workerRefinementRequired,
+      worker_refinement_scope: workerRefinementScope,
+      worker_refinement_strategy: workerRefinementStrategy,
+      worker_refinement_principle: workerRefinementPrinciple,
+      granularity_guardrail_triggered: granularityGuardrailTriggered,
+      granularity_guardrail_notes: granularityGuardrailNotes,
       decision_source: String(planningDecisionMeta.decision_source ?? "manual_override"),
       decision_reason: String(planningDecisionMeta.decision_reason ?? ""),
       split_units_planned: Number(meta.split_units_planned ?? 1),
@@ -394,6 +443,7 @@ export async function handleRunSubcommand(
         runnerMaxParallel: runnerSnapshot.runnerMaxParallel,
         runtimeStats,
         meta,
+        splitPlan,
         workspaceConfigSourceDefault: workspaceResolved.source,
         workspaceValidatedDefault: workspaceResolved.validated,
         runtimeConsistency: consistencySnapshot.runtimeConsistency,

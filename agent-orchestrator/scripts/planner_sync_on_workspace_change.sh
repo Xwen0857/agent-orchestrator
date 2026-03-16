@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Decides whether workspace changes should trigger a planner sync and records
+# the result.
+# Inputs: task directory with workspace_change_report.json.
+# Side effects: may rewrite task metadata, append a task event, append work log
+# evidence, and update the planner checklist.
+# Failure model: exits non-zero when task metadata is missing; otherwise reports JSON status.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 source "$ROOT/agent-orchestrator/scripts/planner_state_paths.sh"
 RUNTIME_CONFIG="$ROOT/templates/coordination/orchestrator/execution_runtime.json"
@@ -34,6 +41,8 @@ fi
 TRIGGER=false
 REASON=""
 
+# Sensitivity controls how aggressively workspace churn should invalidate the
+# current plan.
 case "$SENSITIVITY" in
   HIGH)
     if [[ "$KEY_HITS" -ge 1 || "$CHANGED" -ge 1 ]]; then TRIGGER=true; REASON="high_sensitivity"; fi
@@ -74,6 +83,8 @@ if [[ "$TRIGGER" == true ]]; then
     } >> "$TASK_DIR/work.md"
   fi
 
+  # Keep a visible checklist breadcrumb for planner operators, even when the
+  # sync was triggered automatically.
   ensure_planner_checklist_file "$CHECKLIST" "$CHECKLIST_TEMPLATE"
   printf '| WS-SYNC-%s | workspace delta sync for %s | planner | UPDATED |  | reconcile run strategy with workspace increments | reason=%s changed=%s key_hits=%s score=%s |\n' \
     "$(date -u +%Y%m%d%H%M%S)" "$TASK_ID" "$REASON" "$CHANGED" "$KEY_HITS" "$SCORE" >> "$CHECKLIST"

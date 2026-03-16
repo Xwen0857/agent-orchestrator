@@ -1,14 +1,23 @@
+/**
+ * Shared command-layer helpers for strategy creation, script dispatch, and id generation.
+ * These helpers convert user/session context into script-ready payloads while keeping
+ * shell execution bounded to a fixed allowlist.
+ */
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * Fixed whitelist of shell scripts the dashboard plugin is allowed to execute.
+ * Callers must use the symbolic name so dispatch remains explicit and auditable.
+ */
 export const ORCHESTRATE_SCRIPT_MAP = {
   create_task_from_strategy: "agent-orchestrator/scripts/create_task_from_strategy.sh",
   planner_entry: "agent-orchestrator/scripts/planner_entry.sh",
   planner_apply_amendment_batch: "agent-orchestrator/scripts/planner_apply_amendment_batch.sh",
-  runtime_resume_replan: "agent-orchestrator/scripts/planner_resume_hard_replan.sh",
+  planner_resume_hard_replan: "agent-orchestrator/scripts/planner_resume_hard_replan.sh",
   planner_prepare_single_worker: "agent-orchestrator/scripts/planner_prepare_single_worker.sh",
   planner_prepare_workers: "agent-orchestrator/scripts/planner_prepare_workers.sh",
   transition_task_state: "agent-orchestrator/scripts/transition_task_state.sh",
@@ -25,6 +34,10 @@ export type OrchestrateScriptName = keyof typeof ORCHESTRATE_SCRIPT_MAP;
 
 export type StrategyRiskLevel = "LOW" | "MEDIUM" | "HIGH";
 
+/**
+ * Canonical task creation payload passed into planner/bootstrap scripts.
+ * It preserves both the raw request and the normalized fields derived from it.
+ */
 export type OrchestrateStrategy = {
   task_id: string;
   source: {
@@ -49,7 +62,6 @@ export type OrchestrateStrategy = {
     notes: string[];
   };
   planning_decision?: {
-    resolved_mode: "single" | "multi";
     decision_source: "manual_override" | "planner_llm" | "planner_rules_fallback";
     decision_reason: string;
     decision_signals: {
@@ -58,6 +70,41 @@ export type OrchestrateStrategy = {
       complexity_keywords: string[];
       budget_seconds: number;
     };
+    planner_phase?: "initial_plan" | "replan";
+    decomposition_strategy?: "single_path" | "module_first";
+    release_policy?: "immediate_first_wave" | "rolling_followup";
+    request_authority?: "task_local_strategy_meta";
+    llm_role?: "primary";
+    llm_decision_used?: boolean;
+    token_priority_context?: {
+      tier: "highest";
+      reserved_ratio: number;
+      min_planning_tokens: number;
+      max_planning_tokens: number;
+      inline_override_applied: boolean;
+      effective_planning_tokens: number;
+    };
+    mcp_soft_boundary_signals?: {
+      mode: "bias_plan";
+      isolation_enabled: boolean;
+      orchestrator_profile_name: string;
+      project_profile_name: string;
+      orchestrator_mcp_dir: string;
+      project_mcp_dir: string;
+      orchestrator_namespace_read_only: boolean;
+      project_namespace_read_only: boolean;
+    };
+    meta_decomposition?: {
+      resolved_action: "skip_initial_split" | "force_initial_split";
+      decision_source: "manual_override" | "planner_llm" | "planner_rules_fallback";
+      decomposition_strategy: "meta_single_unit" | "meta_module_partition";
+    };
+    worker_refinement?: {
+      required: true;
+      refinement_strategy: "linear_split_units_placeholder";
+      refinement_scope: "single_meta_input" | "multi_meta_input";
+    };
+    agent_contract_version?: "planner-core-v2";
   };
   workspace?: {
     project_id: string;
@@ -92,6 +139,9 @@ function buildTitleFromRequest(request: string): string {
   return safeSingleLine(firstClause, 72) || "orchestrate task";
 }
 
+/**
+ * Builds a task id that is sortable by creation time and still collision-resistant.
+ */
 export function buildTaskId(title: string, now = new Date()): string {
   const stamp = now
     .toISOString()
@@ -106,6 +156,10 @@ export function buildTaskId(title: string, now = new Date()): string {
   return `task_${stamp}_${slug || "task"}_${randomSuffix}`;
 }
 
+/**
+ * Converts free-form request text into a deterministic baseline strategy.
+ * Missing optional fields fall back to the orchestrator defaults expected by planner-core.
+ */
 export function normalizeFreeTextToStrategy(params: {
   input: string;
   taskId: string;
@@ -152,6 +206,10 @@ export function normalizeFreeTextToStrategy(params: {
   };
 }
 
+/**
+ * Rebuilds a script-ready strategy from a structured session summary.
+ * Array fields are filtered to non-empty strings before being embedded in the payload.
+ */
 export function buildStrategyFromSummary(params: {
   summary: {
     task_goal: string;
@@ -226,6 +284,11 @@ function validateScriptArg(arg: string): void {
   }
 }
 
+/**
+ * Executes one shell script from the explicit whitelist after validating argument shape.
+ * This prevents arbitrary command execution while still allowing the plugin to invoke
+ * the repository's orchestration scripts.
+ */
 export async function runWhitelistedScript(params: {
   repoRoot: string;
   scriptName: OrchestrateScriptName;
@@ -241,6 +304,7 @@ export async function runWhitelistedScript(params: {
     throw new Error("too many script arguments");
   }
 
+  // Reject malformed arguments before anything reaches the process boundary.
   for (const arg of params.args) {
     validateScriptArg(arg);
   }
@@ -259,6 +323,9 @@ export async function runWhitelistedScript(params: {
   };
 }
 
+/**
+ * Derives a deterministic id for idempotent command operations from visible request context.
+ */
 export function buildOperationId(params: {
   subcommand: string;
   sessionKey?: string;

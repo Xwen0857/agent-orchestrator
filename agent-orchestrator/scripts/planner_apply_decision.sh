@@ -2,9 +2,9 @@
 set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
-# Applies the planner decision envelope to the task by selecting the current
-# worker refinement path. planner_entry owns decision generation; this script
-# owns the side-effecting prepare/apply phase.
+# Applies the first-layer initial partition and second-layer worker refinement
+# contract from a PlannerDecisionEnvelope. planner_entry
+# remains focused on decision output while this wrapper owns the decision-apply path.
 
 if [[ $# -lt 4 ]]; then
   echo "usage: $0 <task_dir> <decision_json> <worker_id> <op_base>"
@@ -54,7 +54,6 @@ if [[ "$INITIAL_PARTITION_STRATEGY" == "meta_module_partition" && "$MODULE_COUNT
   echo "initial_partition strategy mismatch: meta_module_partition requires multiple modules"
   exit 1
 fi
-
 REFINEMENT_SCOPE="$(jq -r '.apply_contract.worker_refinement.refinement_scope // .planner_decision.worker_refinement.refinement_scope // empty' <<<"$DECISION_ENVELOPE_JSON")"
 if [[ -z "$REFINEMENT_SCOPE" ]]; then
   if [[ "$MODULE_COUNT" -gt 1 ]]; then
@@ -63,7 +62,6 @@ if [[ -z "$REFINEMENT_SCOPE" ]]; then
     REFINEMENT_SCOPE="single_meta_input"
   fi
 fi
-
 REFINEMENT_STRATEGY="$(jq -r '.apply_contract.worker_refinement.refinement_strategy // .planner_decision.worker_refinement.refinement_strategy // "linear_split_units_placeholder"' <<<"$DECISION_ENVELOPE_JSON")"
 DECOMPOSITION_STRATEGY="$(jq -r '.apply_contract.decomposition_strategy // .planner_decision.decomposition_strategy // "(none)"' <<<"$DECISION_ENVELOPE_JSON")"
 RELEASE_POLICY="$(jq -r '.apply_contract.release_policy // .planner_decision.release_policy // "immediate_first_wave"' <<<"$DECISION_ENVELOPE_JSON")"
@@ -71,33 +69,29 @@ EXECUTION_TARGET="$(jq -r '.execution_target // "local_threads"' <<<"$DECISION_E
 EFFECTIVE_PLANNING_TOKENS="$(jq -r '.token_priority_context.effective_planning_tokens // 0' <<<"$DECISION_JSON")"
 MCP_MODE="$(jq -r '.mcp_soft_boundary_signals.mode // "(none)"' <<<"$DECISION_JSON")"
 GUARDRAIL_TRIGGERED="$(jq -r '.granularity_guardrails.guardrail_triggered // false' <<<"$DECISION_JSON")"
-
-DECISION_CONTEXT_JSON="$(
-  jq -c --argjson initial_partition "$INITIAL_PARTITION_JSON" --argjson meta_unit_count "$MODULE_COUNT" '{
-    llm_role,
-    llm_decision_used,
-    token_priority_context,
-    mcp_soft_boundary_signals,
-    meta_decomposition: (.meta_decomposition // {
-      decision_source: (.decision_source // "manual_override"),
-      decomposition_strategy: ($initial_partition.strategy // "meta_single_unit"),
-      meta_unit_count: $meta_unit_count,
-      primary_principle: "functional_decoupling",
-      decoupling_confidence: "low",
-      decoupling_rationale: ["decomposition summary inferred from initial partition"]
-    }),
-    worker_refinement: (.worker_refinement // {
-      required: true,
-      refinement_strategy: "linear_split_units_placeholder",
-      refinement_scope: (if $meta_unit_count > 1 then "multi_meta_input" else "single_meta_input" end),
-      primary_principle: "engineering_decoupling"
-    }),
-    granularity_guardrails,
-    initial_partition: $initial_partition,
-    agent_contract_version
-  }' <<<"$DECISION_JSON"
-)"
-
+DECISION_CONTEXT_JSON="$(jq -c --argjson initial_partition "$INITIAL_PARTITION_JSON" --argjson meta_unit_count "$MODULE_COUNT" '{
+  llm_role,
+  llm_decision_used,
+  token_priority_context,
+  mcp_soft_boundary_signals,
+  meta_decomposition: (.meta_decomposition // {
+    decision_source: (.decision_source // "manual_override"),
+    decomposition_strategy: ($initial_partition.strategy // "meta_single_unit"),
+    meta_unit_count: $meta_unit_count,
+    primary_principle: "functional_decoupling",
+    decoupling_confidence: "low",
+    decoupling_rationale: ["decomposition summary inferred from initial partition"]
+  }),
+  worker_refinement: (.worker_refinement // {
+    required: true,
+    refinement_strategy: "linear_split_units_placeholder",
+    refinement_scope: (if $meta_unit_count > 1 then "multi_meta_input" else "single_meta_input" end),
+    primary_principle: "engineering_decoupling"
+  }),
+  granularity_guardrails,
+  initial_partition: $initial_partition,
+  agent_contract_version
+}' <<<"$DECISION_JSON")"
 REASON_SUMMARY="meta_units=${MODULE_COUNT} initial_partition_strategy=${INITIAL_PARTITION_STRATEGY} refinement_scope=${REFINEMENT_SCOPE} refinement_strategy=${REFINEMENT_STRATEGY} release=${RELEASE_POLICY} planner_tokens=${EFFECTIVE_PLANNING_TOKENS} mcp_mode=${MCP_MODE} guardrail_triggered=${GUARDRAIL_TRIGGERED} execution_target=${EXECUTION_TARGET}"
 
 export PLANNER_DECISION_JSON="$DECISION_JSON"
@@ -137,7 +131,6 @@ if [[ -f "$SPLIT_PLAN_PATH" ]]; then
   DEPENDENCY_ROOTS="$(jq -r '.refinement_partition.dependency_summary.roots // 0' "$SPLIT_PLAN_PATH" 2>/dev/null || echo 0)"
   DEPENDENCY_BLOCKED="$(jq -r '.refinement_partition.dependency_summary.blocked // 0' "$SPLIT_PLAN_PATH" 2>/dev/null || echo 0)"
 fi
-
 REASON_SUMMARY="${REASON_SUMMARY} dependency_roots=${DEPENDENCY_ROOTS} dependency_blocked=${DEPENDENCY_BLOCKED}"
 "$APPEND_SCRIPT" "$TASK_DIR" "planner-core" "${OP_BASE}${APPLY_OP_SUFFIX}" "$APPLY_EVENT" "$REASON_SUMMARY" "CREATED" "CREATED" >/dev/null
 

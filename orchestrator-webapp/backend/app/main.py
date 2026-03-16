@@ -1,3 +1,4 @@
+"""FastAPI application entrypoint for the orchestrator webapp backend."""
 from __future__ import annotations
 
 from fastapi import FastAPI
@@ -9,6 +10,8 @@ from app.api.ext import router as ext_router
 
 app = FastAPI(title="Orchestrator WebApp API", version="0.1.0")
 
+# CORS is fully open because the paired operator UI is expected to call this backend
+# from local or adjacent development origins.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,4 +27,5 @@ app.include_router(events_router)
 
 @app.get("/")
 def root() -> dict:
+    """Return a minimal health and identity payload for the backend root endpoint."""
     return {"name": "orchestrator-webapp", "status": "ok"}

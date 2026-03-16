@@ -2,9 +2,9 @@
 set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
-# Performs runtime recovery for a hard-tier paused replan after clarification/rebuild is complete.
+# Resumes a hard-tier paused replan after planner-side clarification/rebuild is complete.
 # Inputs: task directory.
-# Side effects: marks the hard replan as resolved, records recovery breadcrumbs,
+# Side effects: marks the hard replan as resolved, records planner breadcrumbs,
 # and transitions BLOCKED_AWAITING_CLARIFICATION back to IN_PROGRESS.
 # Failure model: exits non-zero on missing task artifacts or invalid replan state.
 
@@ -52,15 +52,15 @@ cat > "$TASK_DIR/clarification_response.md" <<EOF
 # Clarification Response
 
 - Task: $TASK_ID
-- Resolution: runtime recovery authorized after hard-tier amendment
+- Resolution: planner updated worker strategy after hard-tier amendment
 - Timestamp: $NOW
 EOF
 
 if [[ -f "$TASK_DIR/plan.md" ]]; then
-  printf '\n- Runtime recovery (%s): hard-tier replan cleared and execution may resume\n' "$NOW" >> "$TASK_DIR/plan.md"
+  printf '\n- Replan resume (%s): planner completed hard-tier replan and resumed execution\n' "$NOW" >> "$TASK_DIR/plan.md"
 fi
 if [[ -f "$TASK_DIR/work.md" ]]; then
-  printf '\n- Latest action: runtime recovery cleared hard-tier replan flow at %s\n' "$NOW" >> "$TASK_DIR/work.md"
+  printf '\n- Latest action: planner resumed hard-tier replan flow at %s\n' "$NOW" >> "$TASK_DIR/work.md"
 fi
 
 TMP_META="$(mktemp "$TASK_DIR/.meta.resume.XXXXXX.json")"
@@ -70,7 +70,7 @@ jq \
   | .runtime_replan.consume_status = "ready"
   | .runtime_replan.resumed_at = $now
   | .runtime_replan.blocked_reason = ""
-  | .runtime_replan.last_runtime_actor = "runtime-recovery"
+  | .runtime_replan.last_runtime_actor = "planner-resume-hard-replan"
   | .runtime_replan.last_runtime_transition = "paused->ready"
   | .workspace_last_synced_seq = (.workspace_user_change_seq // .workspace_last_synced_seq // 0)
   | .workspace_last_sync_reason = "receptionist_amendment_batch_resumed"
@@ -83,15 +83,15 @@ jq \
   "op_replan_resume_${TASK_ID}_$STAMP" \
   "BLOCKED_AWAITING_CLARIFICATION" \
   "IN_PROGRESS" \
-  "runtime recovery applied" >/dev/null 2>&1
+  "planner hard replan resolved" >/dev/null 2>&1
 
 if [[ -x "$APPEND_SCRIPT" ]]; then
   "$APPEND_SCRIPT" \
     "$TASK_DIR" \
-    "agent-orchestrator" \
+    "planner-core" \
     "op_replan_resolved_${TASK_ID}_$STAMP" \
-    "RUNTIME_RECOVERY_APPLIED" \
-    "runtime_recovery_applied" >/dev/null 2>&1 || true
+    "PLANNER_REPLAN_RESUMED" \
+    "planner_hard_replan_resolved" >/dev/null 2>&1 || true
 fi
 
-echo "runtime recovery applied: task_id=$TASK_ID"
+echo "planner hard replan resumed: task_id=$TASK_ID"

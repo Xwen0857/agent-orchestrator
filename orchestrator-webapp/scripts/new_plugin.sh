@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Scaffold a minimal backend plugin manifest and hook entrypoint.
+# Inputs: plugin id and an optional display name.
+# Side effects: creates a new plugin directory, writes a manifest and backend hook,
+# and marks the generated hook executable.
+# Failure model: exits non-zero on invalid args or when the plugin directory already exists.
+
 if [[ $# -lt 1 ]]; then
   echo "usage: $0 <plugin-id> [display-name]"
   exit 2
@@ -17,6 +23,7 @@ fi
 
 mkdir -p "$ROOT"
 
+# Seed a minimal validator-style manifest so the plugin can be registered and expanded later.
 cat > "$ROOT/plugin.manifest.json" <<MANIFEST
 {
   "id": "$PLUGIN_ID",
@@ -32,6 +39,7 @@ cat > "$ROOT/plugin.manifest.json" <<MANIFEST
 }
 MANIFEST
 
+# Generate a tiny backend hook that supports both validate and event hook modes.
 cat > "$ROOT/backend_hook.py" <<'PY'
 #!/usr/bin/env python3
 from __future__ import annotations

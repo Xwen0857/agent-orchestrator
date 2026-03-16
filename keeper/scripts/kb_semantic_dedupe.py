@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""Find the most semantically similar non-deprecated KB entries for a candidate item.
+
+This utility builds lightweight word and trigram vectors from KB markdown content,
+scores similarity against the proposed title/problem/fix input, and returns the top matches.
+"""
+
 import argparse
 import json
 import math
@@ -56,6 +62,7 @@ def entry_text(path: str) -> str:
 
 
 def main() -> int:
+    """Parse inputs, score candidate similarity against existing entries, and print JSON matches."""
     p = argparse.ArgumentParser()
     p.add_argument("--title", required=True)
     p.add_argument("--problem", required=True)

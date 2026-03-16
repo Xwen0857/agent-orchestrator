@@ -64,11 +64,10 @@ type CreateOrchestrateCommandHandlersParams = {
     scriptName:
       | "create_task_from_strategy"
       | "planner_apply_amendment_batch"
-      | "runtime_resume_replan"
+      | "planner_resume_hard_replan"
       | "planner_entry"
       | "transition_task_state"
       | "dashboard_summary"
-      | "kb_submit_candidate"
       | "kb_import_from_workspace"
       | "append_task_event";
     args: string[];
@@ -136,6 +135,7 @@ export function createOrchestrateCommandHandlers(
           fileExists: params.io.fileExists,
           readJsonOrDefault: params.io.readJsonOrDefault,
           readNdjson: params.io.readNdjson,
+          readText: params.io.readText,
         },
         runtime: {
           getRunnerLockMtime: params.runtime.getRunnerLockMtime,
@@ -184,9 +184,7 @@ export function createOrchestrateCommandHandlers(
         taskFoldersRoot: params.paths.taskFoldersRoot,
         io: {
           fileExists: params.io.fileExists,
-          readJsonOrDefault: params.io.readJsonOrDefault,
           readText: params.io.readText,
-          writeJsonAtomic: params.io.writeJsonAtomic,
           writeTextAtomic: params.io.writeTextAtomic,
         },
         runWhitelistedScript: params.runWhitelistedScript,
@@ -203,7 +201,7 @@ export function createOrchestrateCommandHandlers(
         runWhitelistedScript: async (input) =>
           params.runWhitelistedScript({
             ...input,
-            scriptName: "runtime_resume_replan",
+            scriptName: "planner_resume_hard_replan",
           }),
         emitEvent: params.emitEvent,
       }),

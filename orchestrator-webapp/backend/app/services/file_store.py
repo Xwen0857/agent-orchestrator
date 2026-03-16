@@ -1,3 +1,4 @@
+"""Filesystem helpers for atomic JSON/text writes and NDJSON append/read access."""
 from __future__ import annotations
 
 import json
@@ -8,10 +9,12 @@ from typing import Any
 
 
 def ensure_parent(path: Path) -> None:
+    """Create the parent directory for a target path if it does not already exist."""
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
 def read_json(path: Path, default: Any | None = None) -> Any:
+    """Read JSON from disk or return the provided default when the file is absent."""
     if not path.exists():
         if default is not None:
             return default
@@ -21,6 +24,7 @@ def read_json(path: Path, default: Any | None = None) -> Any:
 
 
 def write_json_atomic(path: Path, payload: Any) -> None:
+    """Write JSON via a temporary file and atomic replace."""
     ensure_parent(path)
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
     try:
@@ -36,11 +40,13 @@ def write_json_atomic(path: Path, payload: Any) -> None:
 
 
 def read_text(path: Path) -> str:
+    """Read a UTF-8 text file."""
     with path.open("r", encoding="utf-8") as f:
         return f.read()
 
 
 def write_text_atomic(path: Path, text: str) -> None:
+    """Write UTF-8 text via a temporary file and atomic replace."""
     ensure_parent(path)
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
     try:
@@ -55,6 +61,7 @@ def write_text_atomic(path: Path, text: str) -> None:
 
 
 def read_ndjson(path: Path) -> list[dict[str, Any]]:
+    """Read newline-delimited JSON into a list of decoded records."""
     if not path.exists():
         return []
     records: list[dict[str, Any]] = []
@@ -68,6 +75,7 @@ def read_ndjson(path: Path) -> list[dict[str, Any]]:
 
 
 def append_ndjson(path: Path, record: dict[str, Any]) -> None:
+    """Append one JSON record to an NDJSON file."""
     ensure_parent(path)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=True) + "\n")

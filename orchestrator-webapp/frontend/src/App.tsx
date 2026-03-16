@@ -1,3 +1,8 @@
+/**
+ * Main single-page operator console UI.
+ * This component loads the initial backend state, owns tab selection, and handles
+ * config validation/commit plus basic plugin registration flows.
+ */
 import { useEffect, useMemo, useState } from 'react'
 import {
   commitConfig,
@@ -26,6 +31,8 @@ export function App() {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
+    // Load the initial dashboard, config, plugin, and event snapshots together so
+    // the UI renders from one coherent first fetch.
     Promise.all([getOverview(), getCurrentConfig(), getPlugins(), getEvents()])
       .then(async ([ov, cfg, pls, evs]) => {
         setOverview(ov)
@@ -44,6 +51,8 @@ export function App() {
   }, [overview])
 
   async function onValidate() {
+    // Validation works against the JSON editor payload rather than the last committed
+    // config object so operators can iterate on draft edits locally.
     if (!config) return
     try {
       const draft = JSON.parse(draftText) as CurrentConfig
@@ -94,6 +103,7 @@ export function App() {
       {message && <div className="banner">{message}</div>}
 
       {tab === 'Dashboard' && (
+        // Dashboard focuses on high-level status plus any optional plugin widgets.
         <main className="grid">
           <section className="card">
             <h2>System</h2>
@@ -110,6 +120,8 @@ export function App() {
       )}
 
       {tab === 'Config Studio' && (
+        // Config Studio intentionally exposes raw JSON so the backend config service
+        // can stay schema-flexible while the UI remains lightweight.
         <main className="grid single">
           <section className="card">
             <h2>Draft Editor (JSON)</h2>

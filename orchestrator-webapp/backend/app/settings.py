@@ -1,3 +1,4 @@
+"""Backend settings that resolve repo-relative data and config paths."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,6 +7,8 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class Settings:
+    """Resolved path configuration for the backend service graph."""
+
     repo_root: Path
     dashboard_json: Path
     health_json: Path
@@ -24,6 +27,7 @@ class Settings:
 
 
 def load_settings() -> Settings:
+    """Build the default settings object from the repository layout."""
     repo_root = Path(__file__).resolve().parents[3]
     data_root = repo_root / "orchestrator-webapp" / "backend" / "data"
     return Settings(

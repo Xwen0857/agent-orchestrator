@@ -273,8 +273,7 @@ export function buildRunnerRuntimeController(
         {},
       );
       const schedulerCfg = extractSchedulerConfig(runtimeRaw);
-      // kernel_v2 is the only schedulable mainline path; legacy_script exists only for rollback.
-      const useKernelPath = !kernelRollbackActive;
+      const useKernelPath = schedulerCfg.scheduler_kernel_v2_enabled && !kernelRollbackActive;
       let onceResult: { stdout: string; stderr: string };
       if (useKernelPath) {
         const result = await runSchedulerKernelTick({

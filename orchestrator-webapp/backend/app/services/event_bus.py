@@ -1,3 +1,8 @@
+"""Event persistence and webhook fan-out for backend domain events.
+
+This module writes event records to the NDJSON event store and forwards emitted
+events to the configured webhook delivery service.
+"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -9,11 +14,14 @@ from app.services.webhook_service import WebhookService
 
 
 class EventBus:
+    """Append events to storage and provide read access to recent event history."""
+
     def __init__(self, event_store_path, webhook_service: WebhookService) -> None:
         self.event_store_path = event_store_path
         self.webhook_service = webhook_service
 
     def emit(self, *, event_type: str, actor: str, resource: str, payload: dict, trace_id: str, plugin_id: str | None = None) -> EventRecord:
+        """Persist one event record, fan it out to webhooks, and return the validated event."""
         evt = EventRecord(
             event_id=f"evt_{uuid4().hex}",
             event_type=event_type,
@@ -29,6 +37,7 @@ class EventBus:
         return evt
 
     def list_events(self, limit: int = 200, event_type: str | None = None) -> list[EventRecord]:
+        """Return recent events, optionally filtered by type, as validated models."""
         rows = read_ndjson(self.event_store_path)
         if event_type:
             rows = [r for r in rows if r.get("event_type") == event_type]

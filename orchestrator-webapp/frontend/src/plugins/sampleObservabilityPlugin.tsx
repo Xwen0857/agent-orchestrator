@@ -1,3 +1,4 @@
+/** Sample frontend plugin that contributes one simple dashboard widget. */
 import React from 'react'
 import { FrontendPlugin } from './runtime'
 
