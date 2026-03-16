@@ -18,6 +18,7 @@ node_modules/
 dist/
 build/
 coverage/
+.playwright-cli/
 
 # Local secrets and overrides
 .env
