@@ -5,12 +5,12 @@ describe("orchestrate-scheduler-contract", () => {
   it("extracts defaults from empty runtime", () => {
     const cfg = extractSchedulerConfig({});
     expect(cfg.schema_version).toBe("scheduler-config-v1");
-    expect(cfg.scheduler_kernel_v2_enabled).toBe(true);
-    expect(cfg.strategy).toBe("kernel_v2");
+    expect(cfg.scheduler_kernel_v2_enabled).toBe(false);
+    expect(cfg.strategy).toBe("legacy_script");
     expect(cfg.retry).toEqual({
       base_ms: 2000,
       max_ms: 60000,
-      max_attempts: 4,
+      max_attempts: 3,
     });
     expect(cfg.lane_quota).toEqual({
       recovery_min_share: 0.2,
@@ -25,6 +25,13 @@ describe("orchestrate-scheduler-contract", () => {
     expect(cfg.distributed.consumer).toEqual({
       idempotency_max_keys: 10000,
       idempotency_ttl_ms: 86400000,
+    });
+    expect(cfg.worker_fault_policy).toEqual({
+      fault_actuation_mode: "summary_only",
+      allow_retry: true,
+      allow_rebuild: true,
+      allow_reclaim: true,
+      allow_block: true,
     });
     expect(cfg.rollback_guard).toEqual({
       max_consecutive_tick_failures: 5,
@@ -46,23 +53,17 @@ describe("orchestrate-scheduler-contract", () => {
         throttle: {
           reserve_ratio: 0.1,
         },
+        worker_fault_policy: {
+          fault_actuation_mode: "enabled",
+          allow_rebuild: false,
+        },
       },
     });
     expect(cfg.scheduler_kernel_v2_enabled).toBe(true);
     expect(cfg.strategy).toBe("kernel_v2");
     expect(cfg.retry.max_attempts).toBe(8);
     expect(cfg.throttle.reserve_ratio).toBe(0.1);
-  });
-
-  it("does not expose legacy_script as a schedulable config strategy", () => {
-    const cfg = extractSchedulerConfig({
-      scheduler: {
-        strategy: "legacy_script",
-        scheduler_kernel_v2_enabled: false,
-      },
-    });
-
-    expect(cfg.scheduler_kernel_v2_enabled).toBe(true);
-    expect(cfg.strategy).toBe("kernel_v2");
+    expect(cfg.worker_fault_policy.fault_actuation_mode).toBe("enabled");
+    expect(cfg.worker_fault_policy.allow_rebuild).toBe(false);
   });
 });
