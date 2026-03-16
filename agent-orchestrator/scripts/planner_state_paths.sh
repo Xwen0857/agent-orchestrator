@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Shared path helpers for planner runtime files under the agent-orchestrator
+# state directory.
+# Inputs: optional environment overrides via AGENT_ORCHESTRATOR_STATE_DIR,
+# OPENCLAW_STATE_DIR, or CLAWDBOT_STATE_DIR.
+# Side effects: helper functions may create runtime files from templates.
+# Failure model: path resolvers return defaults; file creators exit only if copy/write fails.
+
 resolve_agent_orchestrator_state_root() {
   local explicit="${AGENT_ORCHESTRATOR_STATE_DIR:-}"
   if [[ -n "$explicit" && "$explicit" == /* ]]; then
@@ -55,6 +62,8 @@ ensure_planner_checklist_file() {
     return
   fi
 
+  # Fall back to a stub checklist so planner flows still have a writable runtime
+  # file even when the template is absent.
   cat > "$checklist_path" <<'TABLE'
 # Planner Checklist Example
 

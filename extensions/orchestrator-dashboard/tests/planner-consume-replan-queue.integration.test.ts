@@ -24,12 +24,6 @@ const consumeReplanScript = path.join(
   "scripts",
   "planner_consume_replan_queue.sh",
 );
-const resumeHardReplanScript = path.join(
-  repoRoot,
-  "agent-orchestrator",
-  "scripts",
-  "planner_resume_hard_replan.sh",
-);
 const templateDir = path.join(
   repoRoot,
   "templates",
@@ -42,7 +36,7 @@ const templateDir = path.join(
 const tempDirs: string[] = [];
 
 async function createHarness(taskId: string, goal: string) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "planner-hard-resume-"));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "planner-replan-"));
   tempDirs.push(root);
   const tasksRoot = path.join(root, "task_folders");
   const stateRoot = path.join(root, "state");
@@ -67,6 +61,11 @@ async function createHarness(taskId: string, goal: string) {
         constraints: ["python only"],
         deliverables: ["source"],
         notes: ["prefer local fixtures"],
+      },
+      workspace: {
+        project_id: "prj_demo",
+        workspace_root: "apps/demo",
+        source: "run_flag",
       },
       created_at: "2026-03-02T00:00:00Z",
       status: "drafted",
@@ -113,7 +112,7 @@ async function createHarness(taskId: string, goal: string) {
       merged_changes: {
         task_goal_patch: {
           op: "set",
-          value: "Build websocket calculator with hard reset",
+          value: "Build websocket calculator with audit trail",
         },
         constraints_patch: [],
         deliverables_patch: [],
@@ -127,10 +126,13 @@ async function createHarness(taskId: string, goal: string) {
 
   return {
     stateRoot,
+    taskId,
     taskDir,
     metaPath,
     logPath: path.join(taskDir, "log.ndjson"),
-    responsePath: path.join(taskDir, "clarification_response.md"),
+    planPath: path.join(taskDir, "plan.md"),
+    primaryPath: path.join(stateRoot, "planner", "primary.md"),
+    checklistPath: path.join(stateRoot, "planner", "checklist.md"),
     batchPath,
   };
 }
@@ -139,40 +141,54 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
-describe("planner_resume_hard_replan integration", () => {
-  it("resolves a hard-tier paused replan and resumes execution", async () => {
-    const harness = await createHarness("task_demo_hard_resume", "Build websocket calculator");
-    const env = {
-      ...process.env,
-      AGENT_ORCHESTRATOR_STATE_DIR: harness.stateRoot,
-    };
+describe("planner_consume_replan_queue integration", () => {
+  it("marks queued replans as applied and leaves a planner breadcrumb", async () => {
+    const harness = await createHarness("task_demo_replan", "Build websocket calculator");
 
     execFileSync(
       applyBatchScript,
       ["--task-dir", harness.taskDir, "--batch", harness.batchPath],
-      { cwd: repoRoot, encoding: "utf8", env },
+      {
+        cwd: repoRoot,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          AGENT_ORCHESTRATOR_STATE_DIR: harness.stateRoot,
+        },
+      },
     );
+
     execFileSync(consumeReplanScript, [harness.taskDir], {
       cwd: repoRoot,
       encoding: "utf8",
-      env,
-    });
-    execFileSync(resumeHardReplanScript, [harness.taskDir], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      env,
+      env: {
+        ...process.env,
+        AGENT_ORCHESTRATOR_STATE_DIR: harness.stateRoot,
+      },
     });
 
     const meta = JSON.parse(await fs.readFile(harness.metaPath, "utf8")) as Record<string, unknown>;
     const log = await fs.readFile(harness.logPath, "utf8");
-    const response = await fs.readFile(harness.responsePath, "utf8");
+    const plan = await fs.readFile(harness.planPath, "utf8");
+    const primary = await fs.readFile(harness.primaryPath, "utf8");
+    const checklist = await fs.readFile(harness.checklistPath, "utf8");
 
-    expect(meta.state).toBe("IN_PROGRESS");
-    expect((meta.planner_replan as Record<string, unknown>).status).toBe("resolved");
-    expect((meta.runtime_replan as Record<string, unknown>).consume_status).toBe("ready");
-    expect(meta.workspace_last_sync_reason).toBe("receptionist_amendment_batch_resumed");
-    expect(meta.dirty_state).toBe(false);
-    expect(response).toContain("planner updated worker strategy");
-    expect(log).toContain("PLANNER_REPLAN_RESUMED");
+    expect(meta.planner_replan).toMatchObject({
+      status: "applied",
+      impact: "hard",
+      worker_policy: "pause_and_require_replan",
+      latest_amendment_batch_path: expect.stringContaining(path.basename(harness.batchPath)),
+    });
+    expect(meta.runtime_replan).toMatchObject({
+      consume_status: "paused",
+      blocked_reason: "planner_pause_and_require_replan",
+      last_runtime_actor: "planner-consume-replan-queue",
+    });
+    expect(meta.state).toBe("BLOCKED_AWAITING_CLARIFICATION");
+    expect(meta.workspace_last_sync_reason).toBe("receptionist_amendment_batch_requires_replan");
+    expect(log).toContain("PLANNER_REPLAN_APPLIED");
+    expect(plan).toContain("receptionist amendment batch absorbed");
+    expect(primary).toContain("Build websocket calculator with audit trail");
+    expect(checklist).toContain("downstream worker must use amended structured inputs");
   });
 });

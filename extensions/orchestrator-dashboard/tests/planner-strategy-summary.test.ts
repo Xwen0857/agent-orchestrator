@@ -89,4 +89,31 @@ describe("planner_strategy_summary helper", () => {
     expect(result.SUMMARY_NOTES).toBe("");
     expect(result.PLANNER_GOAL).toBe("Legacy goal text");
   });
+
+  it("filters empty and non-string summary members", async () => {
+    const tempDir = await createTempDir();
+    tempDirs.push(tempDir);
+    const strategyPath = path.join(tempDir, "strategy.json");
+    await fs.writeFile(
+      strategyPath,
+      JSON.stringify({
+        summary_input: {
+          task_goal: "Ship feature",
+          constraints: ["python only", "", "   ", 7, "no network"],
+          deliverables: ["source", null, "tests", {}],
+          notes: ["prefer local fixtures", "", false],
+        },
+      }),
+      "utf8",
+    );
+
+    const result = runHelper(strategyPath);
+
+    expect(result.SUMMARY_CONSTRAINTS).toBe("python only; no network");
+    expect(result.SUMMARY_DELIVERABLES).toBe("source; tests");
+    expect(result.SUMMARY_NOTES).toBe("prefer local fixtures");
+    expect(result.PLANNER_GOAL).toBe(
+      "Ship feature\nConstraints: python only; no network\nDeliverables: source; tests\nNotes: prefer local fixtures",
+    );
+  });
 });

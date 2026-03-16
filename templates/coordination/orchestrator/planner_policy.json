@@ -1,0 +1,51 @@
+{
+  "schema_version": "planner-policy-v1",
+  "policy_id": "planner_default",
+  "updated_at": "2026-03-03T00:00:00Z",
+  "planner_agent": {
+    "llm_role": "primary",
+    "token_priority": {
+      "tier": "highest",
+      "reserved_ratio": 0.35,
+      "min_planning_tokens": 1200,
+      "max_planning_tokens": 6000,
+      "allow_inline_override": true
+    },
+    "mcp_soft_boundary": {
+      "mode": "bias_plan",
+      "include_namespace": true,
+      "include_read_only": true,
+      "include_profile_name": true,
+      "include_isolation_enabled": true
+    },
+    "granularity_guardrails": {
+      "mode": "soft",
+      "meta_units": {
+        "min": 1,
+        "max": 4
+      },
+      "leaf_units_per_meta": {
+        "min_meaningful_scope": "component_sized",
+        "max": 8
+      },
+      "allow_agent_override_with_reason": true
+    }
+  },
+  "execution_targets": {
+    "local_threads": {
+      "enabled": true
+    },
+    "container": {
+      "enabled": false,
+      "planner_transport": "reserved"
+    },
+    "distributed": {
+      "enabled": false,
+      "planner_transport": "reserved",
+      "dispatch_endpoint": ""
+    }
+  },
+  "compat": {
+    "allow_agent_runtime_fallback": true
+  }
+}
