@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Dispatches one specific task through the configured execution mode wrapper.
+# Inputs: task id plus optional tasks root, mode, role, work-domain, and workspace overrides.
+# Side effects: delegates to `orchestrate_once.sh` with one forced task selection.
+# Failure model: exits non-zero on invalid args, missing dependencies, or invalid task roots.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 ONCE_SCRIPT="$ROOT/agent-orchestrator/scripts/orchestrate_once.sh"
 RUNTIME_CONFIG="$ROOT/templates/coordination/orchestrator/execution_runtime.json"
@@ -12,6 +17,7 @@ ROLE="agent-orchestrator"
 WORK_DOMAIN_ID=""
 WORKSPACE_ROOT=""
 
+# Keep usage centralized so unsupported dispatch shapes fail consistently.
 usage() {
   echo "usage: $0 --task-id <task_id> [--tasks-root <path>] [--mode local_threads|container|distributed] [--role <role>] [--work-domain-id <id>] [--workspace-root <path>]"
   exit 2
@@ -77,9 +83,22 @@ if [[ ! -d "$TASKS_ROOT" ]]; then
   exit 1
 fi
 TASKS_ROOT="$(cd "$TASKS_ROOT" && pwd -P)"
+TASK_DIR="$TASKS_ROOT/$TASK_ID"
+RUNTIME_VIEW="$TASK_DIR/worker_runtime_view.json"
 
 MODE="${MODE:-$(runtime_get_string '.mode' 'local_threads')}"
 
+if [[ ! -f "$RUNTIME_VIEW" ]]; then
+  echo "worker runtime view missing: $RUNTIME_VIEW"
+  exit 1
+fi
+if [[ "$(jq -r '.schema_version // empty' "$RUNTIME_VIEW" 2>/dev/null || true)" != "worker-runtime-view-v1" ]]; then
+  echo "invalid worker runtime view schema: $RUNTIME_VIEW"
+  exit 1
+fi
+
+# Local mode delegates to the single-cycle orchestrator so task execution still
+# flows through the same guardrails and transition logic.
 run_local() {
   local args=("$TASKS_ROOT" "--task-id" "$TASK_ID" "--role" "$ROLE")
   if [[ -n "$WORK_DOMAIN_ID" ]]; then
@@ -96,6 +115,7 @@ case "$MODE" in
     run_local
     ;;
   container|distributed)
+    # These modes are reserved but intentionally fall back to local execution for now.
     echo "dispatch mode '$MODE' reserved for next phase; fallback to local_threads for now" >&2
     run_local
     ;;

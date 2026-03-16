@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ingests pending keeper candidates into the knowledge base, rejecting incomplete
+# candidates and merging near-duplicates when similarity thresholds are met.
+# Inputs: keeper inbox directories, planner property thresholds, and KB add/dedupe helpers.
+# Side effects: moves candidate JSON files between pending/processed/rejected folders
+# and may append merge notes into existing KB entry markdown.
+# Failure model: exits non-zero on shell-level failures; individual candidates are accepted, merged, or rejected.
+
 PENDING_DIR="knowledge-base/inbox/pending"
 PROCESSED_DIR="knowledge-base/inbox/processed"
 REJECTED_DIR="knowledge-base/inbox/rejected"
@@ -48,6 +55,8 @@ for file in "$PENDING_DIR"/*.json; do
   fi
   if [[ "$should_merge" == "true" ]]; then
     if [[ -n "$existing_entry_id" && -n "$existing_path" ]]; then
+      # Keep the merged candidate as an audit trail inside the surviving entry instead
+      # of creating a second near-duplicate KB file.
       {
         echo ""
         echo "## Merged Candidate"
@@ -65,6 +74,8 @@ for file in "$PENDING_DIR"/*.json; do
     fi
   fi
 
+  # Missing core fields are rejected before attempting KB creation to keep
+  # `kb_add_entry.sh` focused on valid candidate material.
   if [[ -z "$problem" || -z "$fix" ]]; then
     jq '.status="REJECTED" | .reject_reason="missing_problem_or_fix"' "$file" > "$REJECTED_DIR/$(basename "$file")"
     rm -f "$file"

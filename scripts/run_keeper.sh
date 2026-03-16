@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Wraps keeper scheduler execution for one-shot runs, loop mode, or a simple
+# local daemon lifecycle.
+# Inputs: mode flag plus optional loop iteration count.
+# Side effects: may start/stop a background scheduler and rewrite pid/log files.
+# Failure model: exits non-zero on invalid usage or scheduler failures.
+
 MODE="${1:---once}" # --once | --loop | --daemon-start | --daemon-stop | --daemon-status
 ITERATIONS="${2:-0}"
 
@@ -11,6 +17,8 @@ LOG_FILE="templates/coordination/orchestrator/keeper-scheduler.log"
 mkdir -p "$(dirname "$PID_FILE")"
 
 start_daemon() {
+  # Clear stale pid files before relaunching so daemon state tracks a live
+  # process only.
   if [[ -f "$PID_FILE" ]]; then
     pid="$(cat "$PID_FILE" 2>/dev/null || true)"
     if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
@@ -33,6 +41,7 @@ stop_daemon() {
   if kill -0 "$pid" 2>/dev/null; then
     kill "$pid" || true
     sleep 0.5
+    # Escalate only if the graceful stop did not clear the process.
     if kill -0 "$pid" 2>/dev/null; then
       kill -9 "$pid" || true
     fi

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Applies commit-guard checks to the files changed within one task run root.
+# Inputs: task id, run root, and optional role/tasks-root overrides.
+# Side effects: writes denial records when protected or unauthorized paths are modified.
+# Failure model: exits non-zero on invalid args; otherwise returns a JSON summary of allowed or denied changes.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 RUNTIME_CONFIG="$ROOT/templates/coordination/orchestrator/execution_runtime.json"
 ACL_SCRIPT="$ROOT/agent-orchestrator/scripts/enforce_role_acl.sh"
@@ -40,6 +45,8 @@ if [[ "$ENABLED" != "true" ]]; then
   exit 0
 fi
 
+# Prefer git-tracked change detection when the run root is inside the repo, then
+# fall back to a raw file walk for out-of-tree or non-repo contexts.
 CHANGED=()
 RUN_ROOT_REL=""
 if [[ "$RUN_ROOT" == "$ROOT"/* ]]; then

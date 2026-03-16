@@ -13,6 +13,7 @@ export function renderOrchestrateHelp(): string {
     "/orchestrate path clear --project-id <project_id>",
     "/orchestrate path list",
     "/orchestrate amend <task_id> <extra requirement>",
+    "/orchestrate resume <task_id>",
     "/orchestrate kb-sync <task_id> [approve|deny|auto-on|auto-off]",
     "/orchestrate help",
   ].join("\n");

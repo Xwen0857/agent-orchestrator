@@ -1,0 +1,187 @@
+{
+  "schema_version": "worker-lifecycle-policy-template-v1",
+  "policy_id": "worker_lifecycle_policy_default_v1",
+  "_owner": "scheduler-ops/runtime",
+  "_semantics": "scheduler-owned worker lifecycle policy template; worker consumes only the assembled governance view",
+  "enabled": true,
+  "budget_policy": {
+    "primary_axis": "token",
+    "allow_degraded_lane": true,
+    "allow_reclaim_pending": true
+  },
+  "template_policy": {
+    "allow_builtin": true,
+    "allow_custom": true,
+    "require_enabled_custom_registration": true
+  },
+  "overlay_policy": {
+    "allowed_overlay_fields": [
+      "delivery_expectations",
+      "default_test_mode",
+      "default_target_role_types"
+    ]
+  },
+  "mailbox_policy": {
+    "default_message_type_by_role": {
+      "frontend": "partial_deliverable",
+      "backend": "partial_deliverable",
+      "ui": "partial_deliverable",
+      "database": "partial_deliverable",
+      "data": "dependency_update",
+      "infra": "handoff_note",
+      "script_automation": "handoff_note"
+    },
+    "default_target_roles_by_role": {
+      "frontend": [
+        "tester-ephemeral"
+      ],
+      "backend": [
+        "tester-ephemeral"
+      ],
+      "ui": [
+        "tester-ephemeral"
+      ],
+      "database": [
+        "tester-ephemeral"
+      ],
+      "data": [
+        "worker-delivery"
+      ],
+      "infra": [
+        "tester-ephemeral",
+        "audit-guard"
+      ],
+      "script_automation": [
+        "tester-ephemeral",
+        "audit-guard"
+      ]
+    }
+  },
+  "result_contract_policy": {
+    "required_result_contract_version": "worker-template-result-contract-v1",
+    "strict_result_validation": true
+  },
+  "worker_stage_policy": {
+    "worker_stage_scope": "per_worker_instance",
+    "stage_isolation_mode": "wrapper_enforced",
+    "stage_runtime_class": "default_shell",
+    "allowed_execution_mode": "local_threads",
+    "worker_stage_overflow_policy": "block_write",
+    "worker_stage_retention_policy": "retain_delivery_only",
+    "success_cleanup_rule": "retain_delivery_only",
+    "failure_cleanup_rule": "retain_evidence_bundle",
+    "purge_on_success": true,
+    "purge_on_failure": false,
+    "export_policy": {
+      "allow_delivery_manifest_only": true,
+      "retain_on_success": true,
+      "retain_on_failure": true,
+      "archive_on_tester_consume": true,
+      "archive_failed_export_evidence": true,
+      "retain_export_records_when_stage_purged": true,
+      "purge_artifacts_after_archive": false,
+      "retain_archive_manifest": true
+    },
+    "mailbox_attachment_policy": {
+      "allow_exported_artifact_references": true,
+      "max_attachment_bytes": 5000000,
+      "allowed_artifact_types": [
+        "application/json",
+        "application/x-python"
+      ]
+    },
+    "worker_stage_profile_defaults": {
+      "light": {
+        "worker_stage_max_bytes": 256000,
+        "worker_stage_max_file_count": 32,
+        "worker_stage_max_single_file_bytes": 64000,
+        "allow_binary_artifacts": false
+      },
+      "normal": {
+        "worker_stage_max_bytes": 1000000,
+        "worker_stage_max_file_count": 128,
+        "worker_stage_max_single_file_bytes": 256000,
+        "allow_binary_artifacts": false
+      },
+      "heavy": {
+        "worker_stage_max_bytes": 5000000,
+        "worker_stage_max_file_count": 512,
+        "worker_stage_max_single_file_bytes": 1000000,
+        "allow_binary_artifacts": false
+      }
+    }
+  },
+  "fault_handling_policy": {
+    "worker_stage_exhausted": "rebuild",
+    "worker_stage_forbidden_write": "block",
+    "worker_stage_attachment_policy_violation": "block",
+    "worker_stage_export_manifest_invalid": "block",
+    "worker_stage_binary_artifact_disallowed": "block"
+  },
+  "evidence_policy": {
+    "default_profile_by_role": {
+      "frontend": "frontend_profile",
+      "backend": "backend_profile",
+      "ui": "frontend_profile",
+      "database": "database_profile",
+      "data": "data_profile",
+      "infra": "infra_profile",
+      "script_automation": "script_automation_profile"
+    },
+    "profiles": {
+      "frontend_profile": {
+        "require_summary": true,
+        "require_test_command": true,
+        "require_changed_files": true,
+        "require_evidence_notes": true,
+        "require_runbook": true,
+        "allow_missing_test_command_with_reason": false
+      },
+      "backend_profile": {
+        "require_summary": true,
+        "require_test_command": true,
+        "require_changed_files": true,
+        "require_evidence_notes": true,
+        "require_runbook": true,
+        "allow_missing_test_command_with_reason": false
+      },
+      "infra_profile": {
+        "require_summary": true,
+        "require_test_command": true,
+        "require_changed_files": true,
+        "require_evidence_notes": true,
+        "require_runbook": true,
+        "allow_missing_test_command_with_reason": false
+      },
+      "database_profile": {
+        "require_summary": true,
+        "require_test_command": true,
+        "require_changed_files": true,
+        "require_evidence_notes": true,
+        "require_runbook": false,
+        "allow_missing_test_command_with_reason": false
+      },
+      "data_profile": {
+        "require_summary": true,
+        "require_test_command": true,
+        "require_changed_files": true,
+        "require_evidence_notes": true,
+        "require_runbook": false,
+        "allow_missing_test_command_with_reason": false
+      },
+      "script_automation_profile": {
+        "require_summary": true,
+        "require_test_command": true,
+        "require_changed_files": true,
+        "require_evidence_notes": true,
+        "require_runbook": false,
+        "allow_missing_test_command_with_reason": false
+      }
+    }
+  },
+  "rebuild_policy": {
+    "allow_rebuild": true,
+    "rebuild_on_budget_amendment": true,
+    "rebuild_on_refinement_amendment": true
+  }
+}

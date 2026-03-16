@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Check whether a plugin manifest is compatible with the backend plugin API window."""
 from __future__ import annotations
 
 import json
@@ -9,6 +10,7 @@ CORE_PLUGIN_API = "1.0.0"
 
 
 def parse(v: str) -> tuple[int, int, int]:
+    """Parse a strict three-part semantic version string."""
     p = v.split('.')
     if len(p) != 3:
         raise ValueError(f"invalid semver: {v}")
@@ -16,6 +18,7 @@ def parse(v: str) -> tuple[int, int, int]:
 
 
 def check(manifest: dict) -> tuple[bool, str]:
+    """Return compatibility status and message for one plugin manifest payload."""
     api = manifest.get('apiVersion', '')
     try:
         major, minor, _ = parse(api)
@@ -30,6 +33,7 @@ def check(manifest: dict) -> tuple[bool, str]:
 
 
 def main() -> int:
+    """Read one manifest path from argv, print a JSON compatibility result, and set exit code."""
     if len(sys.argv) < 2:
         print("usage: check_plugin_compat.py <plugin.manifest.json>")
         return 2

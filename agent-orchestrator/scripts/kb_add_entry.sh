@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Creates a new knowledge-base entry markdown file, subject to keeper write
+# policy.
+# Inputs: title, tags, problem, fix, and applicability scope.
+# Side effects: writes a new markdown file under knowledge-base/entries.
+# Failure model: exits non-zero when keeper gating blocks direct writes or args are invalid.
+
 CONFIG="templates/coordination/planner/config/current.md"
 keeper_enabled="$(sed -n 's/^keeper_enabled:[[:space:]]*//p' "$CONFIG" 2>/dev/null | tail -n 1 | tr -d '\r')"
 
@@ -29,6 +35,8 @@ ENTRY_ID="kb_${DATE_PREFIX}_$$"
 FILE="knowledge-base/entries/${DATE_PREFIX}-${SLUG}.md"
 NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
+# This intentionally writes the canonical entry template directly so later score
+# recomputation can rely on predictable metadata fields.
 cat > "$FILE" <<EOF
 # Knowledge Entry
 

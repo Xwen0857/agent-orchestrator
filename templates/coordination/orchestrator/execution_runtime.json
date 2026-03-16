@@ -131,6 +131,13 @@
         "idempotency_ttl_ms": 86400000
       }
     },
+    "worker_fault_policy": {
+      "fault_actuation_mode": "summary_only",
+      "allow_retry": true,
+      "allow_rebuild": true,
+      "allow_reclaim": true,
+      "allow_block": true
+    },
     "rollback_guard": {
       "max_consecutive_tick_failures": 5,
       "min_dispatch_success_rate": 0.6,

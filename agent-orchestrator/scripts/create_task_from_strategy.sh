@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Creates a new task folder from a validated strategy JSON and a task template.
+# Inputs: strategy JSON plus optional tasks root and template dir.
+# Side effects: creates a new task directory, writes meta/log files, and copies
+# the strategy snapshot into the task.
+# Failure model: exits non-zero on invalid strategy fields, unsafe paths, or existing task ids.
+
 if [[ $# -lt 1 ]]; then
   echo "usage: $0 <strategy_json> [tasks_root] [template_dir]"
   exit 2
@@ -100,6 +106,8 @@ if [[ "$TASK_DIR_ABS" != "$TASKS_ROOT_ABS/"* ]]; then
   exit 1
 fi
 
+# Copy the template before generating metadata so the task starts with the
+# expected scaffold and only then receives task-specific values.
 cp -R "$TEMPLATE_DIR/." "$TASK_DIR/"
 
 NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -150,6 +158,8 @@ jq -n \
 : > "$TASK_DIR/log.ndjson"
 cp "$STRATEGY_JSON" "$TASK_DIR/${TASK_ID}.strategy.json"
 
+# Update the templated plan file in place so the initial task scaffold carries
+# the concrete goal without requiring the planner to infer it from metadata.
 if [[ -f "$TASK_DIR/plan.md" ]]; then
   PLAN_TMP="$(mktemp "$TASK_DIR/.plan.XXXXXX")"
   awk -v goal="$GOAL" '

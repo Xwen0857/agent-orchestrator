@@ -1,3 +1,8 @@
+"""Configuration read/validate/commit orchestration for the backend.
+
+This module parses planner and audit config surfaces, validates draft changes,
+persists committed changes, and coordinates audit/event/plugin hooks around config updates.
+"""
 from __future__ import annotations
 
 import json
@@ -35,6 +40,8 @@ BOOL_RE = {"true": True, "false": False}
 
 
 class ConfigService:
+    """Manage current config reads, draft validation, commits, and rollback execution."""
+
     def __init__(
         self,
         *,
@@ -63,6 +70,7 @@ class ConfigService:
         self.audit = audit
 
     def read_current(self) -> CurrentConfigResponse:
+        """Return the current planner and audit config from disk in API response form."""
         return CurrentConfigResponse(
             plannerCurrent=self._parse_plain_kv(read_text(self.planner_current_md)),
             plannerProperties=self._parse_list_kv(read_text(self.planner_properties_md)),
@@ -70,6 +78,7 @@ class ConfigService:
         )
 
     def validate(self, req: ValidateDraftRequest, user: UserContext, trace_id: str) -> ValidateDraftResponse:
+        """Validate a draft config, infer risk, and emit audit/event records for the attempt."""
         base = self.read_current()
         issues: list[ValidationIssue] = []
 
@@ -139,6 +148,7 @@ class ConfigService:
         return response
 
     def commit(self, req: CommitDraftRequest, user: UserContext) -> CommitDraftResponse:
+        """Validate and commit a config draft, then snapshot and emit post-commit hooks."""
         trace_id = f"trace_{uuid4().hex}"
         validation = self.validate(ValidateDraftRequest(draft=req.draft, reason=req.reason), user, trace_id)
         if not validation.valid:
@@ -176,6 +186,7 @@ class ConfigService:
         return CommitDraftResponse(committed=True, snapshotVersion=snapshot_version, traceId=trace_id)
 
     def rollback(self, target_version_id: str, reason: str, user: UserContext) -> dict[str, Any]:
+        """Run the configured rollback script and emit the resulting rollback events."""
         trace_id = f"trace_{uuid4().hex}"
         if user.role not in {Role.operator, Role.approver}:
             raise HTTPException(status_code=403, detail="insufficient role")
@@ -204,9 +215,11 @@ class ConfigService:
         return payload
 
     def history(self) -> list[dict[str, Any]]:
+        """Return config history records from the NDJSON history store."""
         return read_ndjson(self.history_ndjson)
 
     def _infer_risk(self, before: CurrentConfigResponse, after: CurrentConfigResponse) -> str:
+        """Infer config-change risk from changed keys, audit rules, and property deltas."""
         high_keys = {
             "transition_script",
             "audit_gate_script",
@@ -230,6 +243,7 @@ class ConfigService:
         return "LOW"
 
     def _run_validator_plugins(self, draft: CurrentConfigResponse, trace_id: str) -> list[ValidationIssue]:
+        """Run enabled plugin validation hooks and convert results into validation issues."""
         issues: list[ValidationIssue] = []
         for rec, manifest in self.plugin_registry.get_enabled_manifests():
             if "validator" not in manifest.capabilities:
@@ -260,6 +274,7 @@ class ConfigService:
         return issues
 
     def _run_event_handlers(self, event_type: str, payload: dict[str, Any], trace_id: str) -> None:
+        """Fan out post-commit or rollback lifecycle events to enabled plugin hooks."""
         for rec, manifest in self.plugin_registry.get_enabled_manifests():
             if "event.handler" not in manifest.capabilities:
                 continue
@@ -277,6 +292,7 @@ class ConfigService:
 
     @contextmanager
     def _acquire_lock(self):
+        """Acquire and release the config lock file using exclusive create semantics."""
         self.lock_path.parent.mkdir(parents=True, exist_ok=True)
         fd = None
         try:
@@ -294,6 +310,7 @@ class ConfigService:
                 pass
 
     def _write_configs(self, cfg: CurrentConfigResponse) -> None:
+        """Persist the planner and audit config surfaces using atomic file-store helpers."""
         current_text = read_text(self.planner_current_md)
         props_text = read_text(self.planner_properties_md)
         next_current = self._update_plain_kv_text(current_text, cfg.plannerCurrent)
@@ -303,6 +320,7 @@ class ConfigService:
         write_json_atomic(self.audit_policy_json, cfg.auditPolicy)
 
     def _run_script(self, script: Path, args: list[str]) -> str:
+        """Execute one helper script and raise an HTTP error if it fails."""
         cp = subprocess.run(
             [str(script)] + args,
             cwd=str(self.planner_current_md.parents[4]),
@@ -315,6 +333,7 @@ class ConfigService:
         return cp.stdout.strip()
 
     def _parse_plain_kv(self, text: str) -> dict[str, Any]:
+        """Parse `key: value` lines from the planner current config surface."""
         data: dict[str, Any] = {}
         for line in text.splitlines():
             line = line.strip()
@@ -327,6 +346,7 @@ class ConfigService:
         return data
 
     def _parse_list_kv(self, text: str) -> dict[str, Any]:
+        """Parse `- key: value` lines from the planner properties config surface."""
         data: dict[str, Any] = {}
         for raw in text.splitlines():
             line = raw.strip()
@@ -337,6 +357,7 @@ class ConfigService:
         return data
 
     def _update_plain_kv_text(self, original: str, values: dict[str, Any]) -> str:
+        """Update or append plain key/value lines while preserving unrelated content."""
         remaining = {k: self._fmt(v) for k, v in values.items()}
         out: list[str] = []
         for raw in original.splitlines():
@@ -355,6 +376,7 @@ class ConfigService:
         return "\n".join(out).rstrip() + "\n"
 
     def _update_list_kv_text(self, original: str, values: dict[str, Any]) -> str:
+        """Update or append list-style key/value lines while preserving unrelated content."""
         remaining = {k: self._fmt(v) for k, v in values.items()}
         out: list[str] = []
         for raw in original.splitlines():
@@ -374,6 +396,7 @@ class ConfigService:
         return "\n".join(out).rstrip() + "\n"
 
     def _coerce(self, value: str) -> Any:
+        """Coerce text scalars into bool, int, float, or leave them as strings."""
         v = value.strip()
         if v.lower() in BOOL_RE:
             return BOOL_RE[v.lower()]
@@ -387,6 +410,7 @@ class ConfigService:
             return v
 
     def _fmt(self, value: Any) -> str:
+        """Render one config scalar back into the text config file format."""
         if value is None:
             return ""
         if isinstance(value, bool):

@@ -1,3 +1,8 @@
+/**
+ * Stable runtime config consumed by the plugin entrypoint and runtime services.
+ * This module owns defaults, primitive coercion, and enum validation only.
+ * It does not verify that referenced paths exist on disk.
+ */
 export type DashboardPluginConfig = {
   enabled: boolean;
   repoRoot: string;
@@ -33,6 +38,9 @@ export const DEFAULT_RUNNER_INTERVAL_SEC = 10;
 export const DEFAULT_AGENT_RUNTIME_CONFIG_PATH =
   "templates/coordination/orchestrator/agent_runtime.json";
 
+/**
+ * Host-facing schema wrapper that delegates normalization to `parsePluginConfig`.
+ */
 export const configSchema = {
   safeParse(value: unknown) {
     const normalized = parsePluginConfig(value);
@@ -130,12 +138,18 @@ function ensureLeadingSlash(input: string): string {
   return input.startsWith("/") ? input : `/${input}`;
 }
 
+/**
+ * Converts arbitrary plugin config input into a complete config object with defaults.
+ * Invalid scalar values silently fall back so plugin startup remains deterministic.
+ */
 export function parsePluginConfig(value: unknown): DashboardPluginConfig {
   const raw =
     value && typeof value === "object" && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : {};
 
+  // Route prefixes are normalized first because the rest of the plugin assumes
+  // leading slashes and does not defend against malformed host config.
   const repoRoot = asString(raw.repoRoot, DEFAULT_REPO_ROOT);
   const basePath = ensureLeadingSlash(asString(raw.basePath, DEFAULT_BASE_PATH));
   const apiBasePath = ensureLeadingSlash(asString(raw.apiBasePath, DEFAULT_API_BASE_PATH));

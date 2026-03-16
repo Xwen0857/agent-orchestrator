@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Restores planner config from a versioned history entry and records rollback
+# lineage in the pointer and audit log.
+# Inputs: required target version id plus optional actor and reason.
+# Side effects: overwrites current.md, creates a rollback backup, appends audit.
+# Failure model: exits non-zero on lock contention or missing target history.
+
 if [[ $# -lt 1 ]]; then
   echo "usage: $0 <target_version_id> [actor] [reason]"
   exit 2
@@ -20,6 +26,8 @@ TARGET_FILE="$HISTORY_DIR/$TARGET_VERSION_ID.md"
 
 mkdir -p "$HISTORY_DIR"
 
+# Share the same lock contract as snapshot creation so history and pointer
+# updates serialize across both commands.
 acquire_lock() {
   local i=0
   while ! (set -o noclobber; echo "$$" > "$LOCK_FILE") 2>/dev/null; do
@@ -59,6 +67,8 @@ now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 backup_version_id="rollback-pre-$(date -u +"%Y%m%d%H%M%S")-$$-$RANDOM"
 backup_file="$HISTORY_DIR/$backup_version_id.md"
 
+# Preserve the pre-rollback config as its own history entry before replacing the
+# live file so operators have a one-step undo point.
 if [[ -f "$CURRENT_CONFIG" ]]; then
   cp "$CURRENT_CONFIG" "$backup_file"
 else
@@ -69,6 +79,8 @@ cp "$TARGET_FILE" "$CURRENT_CONFIG"
 target_checksum="$(shasum -a 256 "$TARGET_FILE" | awk '{print $1}')"
 backup_checksum="$(shasum -a 256 "$backup_file" | awk '{print $1}')"
 
+# The pointer records both the new active version and the generated backup id so
+# later tooling can trace the rollback chain.
 jq -n \
   --arg current_version_id "$TARGET_VERSION_ID" \
   --arg previous_version_id "$current_version_id" \
@@ -87,6 +99,8 @@ jq -n \
     rollback_backup_version_id: $rollback_backup_version_id
   }' > "$POINTER_FILE"
 
+# Audit history captures both the target and backup checksums because rollback
+# mutates two versioned files in one operation.
 jq -cn \
   --arg timestamp "$now" \
   --arg action "ROLLBACK" \

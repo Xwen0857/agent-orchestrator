@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Installs the local orchestrator-dashboard extension into an OpenClaw checkout
+# by creating a symlink in the host extensions directory.
+# Inputs: path to an OpenClaw repository.
+# Side effects: creates a new symlink under the target repo.
+# Failure model: exits non-zero when the target repo is invalid or the destination exists.
+
 usage() {
   echo "usage: $0 <path-to-openclaw>"
 }
@@ -33,6 +39,8 @@ fi
 
 mkdir -p "$(dirname "$DEST_PLUGIN")"
 
+# Refuse to overwrite an existing plugin directory or link; the operator should
+# decide whether to replace or preserve the current installation.
 if [[ -e "$DEST_PLUGIN" || -L "$DEST_PLUGIN" ]]; then
   echo "destination already exists: $DEST_PLUGIN" >&2
   echo "remove or rename it first, then rerun this installer" >&2

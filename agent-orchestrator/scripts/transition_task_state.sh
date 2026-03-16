@@ -2,6 +2,12 @@
 set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
+# Performs one guarded task state transition with policy checks and audit logging.
+# Inputs: task directory, actor, operation id, from-state, to-state, and reason text.
+# Side effects: validates task artifacts, may create approval records, and rewrites
+# task metadata and log state when the transition is allowed.
+# Failure model: exits non-zero on invalid transitions, missing guards, or failed writes.
+
 if [[ $# -lt 6 ]]; then
   echo "usage: $0 <task_dir> <actor> <operation_id> <from_state> <to_state> <reason>"
   exit 2
@@ -29,6 +35,8 @@ if [[ ! -f "$LOG" ]]; then
   : > "$LOG"
 fi
 
+# Keep the transition allowlist explicit so invalid state jumps fail before any
+# metadata mutation is attempted.
 is_allowed_transition() {
   local from="$1"
   local to="$2"

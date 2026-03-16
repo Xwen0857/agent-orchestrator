@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Detects workspace file changes for a task run and records a summarized change
+# report.
+# Inputs: task directory with a run_root recorded in meta.json.
+# Side effects: rewrites workspace_change_report.json and may bump workspace
+# change counters in meta.json.
+# Failure model: exits non-zero when task metadata or run_root is missing.
+
 ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
 REFRESH_SCRIPT="$ROOT/agent-orchestrator/scripts/workspace_refresh_manifest.sh"
 
@@ -29,6 +36,8 @@ if find "$RUN_ROOT/workspace" -type f \( -name 'interface.json' -o -name 'packag
   KEY_HITS=1
 fi
 
+# The semantic score is a lightweight heuristic that combines raw change count
+# with the presence of high-signal files.
 SEMANTIC_SCORE="$(python3 - <<PY
 c=$CHANGED_COUNT
 k=$KEY_HITS

@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Runs the keeper maintenance cycle for knowledge-base ingestion, score recomputation,
+# split suggestions, and health reporting.
+# Inputs: planner config/properties plus the knowledge-base entry and feedback files.
+# Side effects: may ingest new candidates, recompute KB scores, and rewrites keeper
+# report outputs in JSON and Markdown form.
+# Failure model: exits early with a DISABLED report when keeper is off; otherwise exits non-zero on script or report-generation failures.
+
 CONFIG="templates/coordination/planner/config/current.md"
 PROPS="templates/coordination/planner/properties.md"
 ENTRIES_DIR="knowledge-base/entries"
@@ -31,11 +38,14 @@ EOF
   exit 0
 fi
 
+# Run ingestion first so recompute and reporting see the newest candidate set.
 ingest_output="$("$INGEST_SCRIPT")"
 "$RECOMPUTE_SCRIPT" >/dev/null
 split_suggestions="$(python3 "$SPLIT_SUGGEST_SCRIPT" "$ENTRIES_DIR" 2>/dev/null || echo '[]')"
 
 tmp_json="$(mktemp)"
+# Use Python for aggregation because the report combines filesystem scans, markdown
+# parsing, and feedback trend calculations.
 python3 - "$ENTRIES_DIR" "$ingest_output" "$FEEDBACK_FILE" "$split_suggestions" > "$tmp_json" <<'PY'
 import json
 import os

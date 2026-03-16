@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Performs a simple lexical search across knowledge-base markdown entries.
+# Inputs: query string.
+# Side effects: none.
+# Failure model: exits zero with no output when the knowledge-base directory is absent.
+
 if [[ $# -lt 1 ]]; then
   echo "usage: $0 <query>"
   exit 2

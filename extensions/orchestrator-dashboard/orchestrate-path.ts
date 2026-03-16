@@ -1,13 +1,27 @@
+/**
+ * Path state helpers for `/orchestrate path` and `/orchestrate run`.
+ * This module normalizes persisted project-to-workspace mappings and resolves the
+ * effective workspace for a run without performing file writes.
+ */
 import path from "node:path";
 
+/**
+ * Identifies which precedence layer supplied the workspace used for a run.
+ */
 export type WorkspaceConfigSource = "run_flag" | "path_default" | "runtime_default";
 
+/**
+ * Persisted per-project workspace default stored in the path state file.
+ */
 export type PathStateProjectEntry = {
   workspace_root: string;
   updated_at: string;
   updated_by: string;
 };
 
+/**
+ * Serialized project workspace registry used by the dashboard plugin.
+ */
 export type PathState = {
   schema_version: "orchestrate-path-state-v1";
   updated_at: string;
@@ -18,6 +32,9 @@ function asString(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
+/**
+ * Parses simple `--key value` segments while preserving non-flag tokens in order.
+ */
 export function parseKvFlags(payload: string): {
   flags: Record<string, string>;
   positionals: string[];
@@ -41,16 +58,26 @@ export function parseKvFlags(payload: string): {
   return { flags, positionals };
 }
 
+/**
+ * Restricts project ids to a filesystem-safe slug used in state keys and path prefixes.
+ */
 export function isSafeProjectId(projectId: string): boolean {
   return /^[A-Za-z0-9._-]+$/u.test(projectId);
 }
 
+/**
+ * Rejects empty, absolute, and upward-traversing workspace roots before they are joined
+ * against the shared projects root.
+ */
 export function validateWorkspaceRootRelative(workspaceRoot: string): string | null {
   if (!workspaceRoot) {
     return "workspace_root is required";
   }
   if (path.isAbsolute(workspaceRoot)) {
     return "workspace_root must be relative";
+  }
+  if (workspaceRoot.includes("..")) {
+    return "workspace_root cannot contain ..";
   }
   const normalized = path.posix.normalize(workspaceRoot.replace(/\\/gu, "/"));
   if (
@@ -64,6 +91,10 @@ export function validateWorkspaceRootRelative(workspaceRoot: string): string | n
   return null;
 }
 
+/**
+ * Resolves a workspace under the configured projects root and throws if it escapes
+ * that root after absolute-path normalization.
+ */
 export function resolveWorkspaceUnderProjects(params: {
   repoRoot: string;
   projectsRootRel: string;
@@ -80,6 +111,9 @@ export function resolveWorkspaceUnderProjects(params: {
   return resolved;
 }
 
+/**
+ * Builds the empty persisted shape used when no path state exists yet.
+ */
 export function buildEmptyPathState(now = new Date().toISOString()): PathState {
   return {
     schema_version: "orchestrate-path-state-v1",
@@ -88,6 +122,10 @@ export function buildEmptyPathState(now = new Date().toISOString()): PathState {
   };
 }
 
+/**
+ * Filters arbitrary JSON into a safe path-state shape, dropping invalid project ids and
+ * incomplete project entries instead of partially preserving them.
+ */
 export function normalizePathState(raw: unknown, fallback = buildEmptyPathState()): PathState {
   const record =
     raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
@@ -123,6 +161,10 @@ export function normalizePathState(raw: unknown, fallback = buildEmptyPathState(
   };
 }
 
+/**
+ * Resolves the workspace used by `/orchestrate run`.
+ * Precedence is: explicit run flags, then persisted project default, then runtime default.
+ */
 export function resolveWorkspaceConfigForRun(params: {
   repoRoot: string;
   projectsRootRel: string;
@@ -146,6 +188,8 @@ export function resolveWorkspaceConfigForRun(params: {
     throw new Error("invalid --project-id");
   }
 
+  // Explicit run flags win as long as the workspace survives both relative-path validation
+  // and absolute-path containment under the configured projects root.
   if (workspaceFlag) {
     const err = validateWorkspaceRootRelative(workspaceFlag);
     if (err) {
@@ -164,6 +208,8 @@ export function resolveWorkspaceConfigForRun(params: {
     };
   }
 
+  // Persisted defaults are accepted only when the saved workspace still passes the
+  // current validation rules. Invalid saved values silently fall through.
   const projectForPath = projectIdFlag || "prj_default";
   const projectDefault = params.pathState.projects[projectForPath];
   if (projectDefault) {
@@ -183,6 +229,8 @@ export function resolveWorkspaceConfigForRun(params: {
     }
   }
 
+  // The runtime default is deterministic so task bootstrap can proceed even when
+  // no project-specific mapping has been recorded yet.
   return {
     projectId: projectIdFlag || "prj_default",
     workspaceRoot: `${projectIdFlag || "prj_default"}/runs/${params.taskId}/workspace`,

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildRunnerRuntimeController } from "../orchestrate-runner-runtime.js";
+import {
+  buildRunnerRuntimeController,
+  normalizeSchedulerRuntimeConsistency,
+} from "../orchestrate-runner-runtime.js";
 
 describe("orchestrate-runner-runtime", () => {
   it("returns degraded when runner is disabled", async () => {
@@ -22,7 +25,7 @@ describe("orchestrate-runner-runtime", () => {
       io: {
         fileExists: async () => false,
         readText: async () => "",
-        readJsonOrDefault: async <T>(_targetPath: string, fallback: T): Promise<T> => fallback,
+        readJsonOrDefault: async <T>(_path: string, fallback: T) => fallback,
         runScript: vi.fn(async () => ({ stdout: "", stderr: "" })),
       },
       runWhitelistedScript: vi.fn(async () => ({ stdout: "{}", stderr: "" })),
@@ -55,7 +58,7 @@ describe("orchestrate-runner-runtime", () => {
       io: {
         fileExists: async () => false,
         readText: async () => "",
-        readJsonOrDefault: async <T>(_targetPath: string, fallback: T): Promise<T> => fallback,
+        readJsonOrDefault: async <T>(_path: string, fallback: T) => fallback,
         runScript: vi.fn(async () => ({ stdout: "", stderr: "" })),
       },
       runWhitelistedScript: vi.fn(async () => ({ stdout: "{}", stderr: "" })),
@@ -69,5 +72,12 @@ describe("orchestrate-runner-runtime", () => {
       lastTickAt: "",
       lastExitCode: "",
     });
+  });
+
+  it("normalizes scheduler runtime consistency", () => {
+    expect(normalizeSchedulerRuntimeConsistency(null)).toBe("unknown");
+    expect(normalizeSchedulerRuntimeConsistency({})).toBe("unknown");
+    expect(normalizeSchedulerRuntimeConsistency({ runtimeConsistency: "ok" })).toBe("ok");
+    expect(normalizeSchedulerRuntimeConsistency({ runtimeConsistency: "mismatch" })).toBe("mismatch");
   });
 });

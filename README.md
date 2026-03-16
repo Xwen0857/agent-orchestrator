@@ -11,6 +11,8 @@ The result is a system that aims to be:
 - safer to operate
 - better suited for real engineering workflows
 
+`planner-core` is a decoupling-first planning agent, not a threshold-based splitter.
+
 ## Why This Project Exists
 
 Most agent systems blur together:
@@ -109,7 +111,6 @@ It collects:
 - workspace and project hints
 - constraints
 - risk and budget preferences
-- mode preferences when needed
 
 The entry phase produces a structured summary before execution begins.
 
@@ -117,10 +118,70 @@ The entry phase produces a structured summary before execution begins.
 
 Planning is separated from scheduling:
 
-- `planner-core` handles requirement modeling, mode selection, and task preparation
+- `planner-core` handles requirement modeling, decoupling-first decomposition, and task preparation
 - `scheduler-ops` handles queue selection, dispatch, retry, recovery, and concurrency control
 
 This distinction matters: planning decides what should happen, scheduling decides when and how it should run.
+
+Current planner dependency model:
+
+- `planner-core` outputs a minimal leaf dependency chain (`module -> component -> depends_on_leaf_ids`).
+- The chain is a planning-time coordination hint (`component_semantic_linearized`), not a full scheduler DAG.
+- Current downstream consumption is status/release summary visibility, not runtime dependency gating.
+- Planner view rendering uses a dedicated projection layer (`orchestrate-planner-projection.ts`) so view-model only composes response payloads.
+- Dependency semantics are split into:
+  - `planner_dependency_semantics.json` for component dependency map
+  - `planner_dependency_defaults.json` for fallback mode/note/summary defaults
+
+When to evolve into a full DAG:
+
+- scheduler needs dependency-aware release/concurrency control
+- replan needs dependency-scoped partial recompute
+- tester/observer needs dependency-based blockage tracing
+- UI requires interactive dependency graph operations
+
+Until one of the above becomes an implemented consumer, the dependency model stays frozen at the minimal validated shape.
+
+Planner invariants are centralized at:
+
+- `templates/coordination/orchestrator/planner_invariants.md`
+
+Planner boundary matrix:
+
+- `orchestrate-planner-contract.ts`: types and re-export barrel only.
+- `orchestrate-planner-split-plan-contract.ts`: split-plan normalize/validate/fail-fast only.
+- `orchestrate-planner-projection.ts`: planner semantic projection only.
+- `orchestrate-view-model.ts`: response parameter composition only.
+
+Split-plan pipeline:
+
+1. `orchestrate-planner-split-plan-schema.ts`: schema normalize/migration
+2. `orchestrate-planner-split-plan-parse.ts`: field extraction and type narrowing
+3. `orchestrate-planner-split-plan-validate.ts`: invariant and dependency consistency checks
+4. `orchestrate-planner-split-plan-summary.ts`: dependency summary + fallback assembly
+5. `orchestrate-planner-split-plan-contract.ts`: facade orchestration entry (`extractSplitPlan`)
+
+Allowed import directions:
+
+- `projection -> contract/errors/hints`
+- `view-model -> projection/response`
+- `response -> dependency-semantics`
+
+Prohibited backflow:
+
+- `view-model -> split-plan-contract`
+- `run/status/agent-runtime -> split-plan-contract`
+
+Planner change entry order:
+
+1. update planner contract types and semantics/defaults configs
+2. update split-plan validation/projection
+3. update view-model/response consumption
+4. update scripts and tests
+
+Split-plan field change rule:
+
+- Any new `split_plan`/`refinement_partition` field must be updated together in parse + validate + summary test coverage.
 
 ### Execution
 

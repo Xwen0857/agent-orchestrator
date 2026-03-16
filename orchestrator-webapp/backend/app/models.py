@@ -1,3 +1,4 @@
+"""Pydantic models and enum types shared across the backend API surface."""
 from __future__ import annotations
 
 from enum import Enum
@@ -11,6 +12,8 @@ PLUGIN_API_VERSION = "1.0.0"
 
 
 class Role(str, Enum):
+    """Backend roles accepted by the operator-facing APIs."""
+
     viewer = "Viewer"
     operator = "Operator"
     approver = "Approver"

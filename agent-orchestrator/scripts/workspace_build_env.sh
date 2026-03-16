@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Prepares a task run environment according to .envspec.json and emits build
+# summary artifacts.
+# Inputs: run root and optional profile override.
+# Side effects: may create venvs, install dependencies, run custom commands, and
+# rewrites env_build_report.json plus build_manifest.json.
+# Failure model: exits non-zero when the selected profile fails or required inputs are missing.
+
 if [[ $# -lt 1 ]]; then
   echo "usage: $0 <run_root> [profile]"
   exit 2
@@ -23,6 +30,8 @@ BUILD_OUT_DIR="$(jq -r '.build.output_dir // "build"' "$ENVSPEC" 2>/dev/null || 
 DIST_OUT_DIR="$(jq -r '.build.release_dir // "dist"' "$ENVSPEC" 2>/dev/null || echo dist)"
 mkdir -p "$RUN_ROOT/$BUILD_OUT_DIR" "$RUN_ROOT/$DIST_OUT_DIR" "$RUN_ROOT/.cache" "$RUN_ROOT/env"
 
+# Profiles deliberately encapsulate different setup strategies so the report can
+# record what was attempted regardless of the implementation path.
 case "$PROFILE" in
   local-venv)
     VENV_REL="$(jq -r '.python.venv_dir // "env/venv"' "$ENVSPEC" 2>/dev/null || echo env/venv)"
@@ -74,6 +83,8 @@ jq -n \
   --arg generated_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
   '{status:$status,profile:$profile,details:$details,command:$command,generated_at:$generated_at}' > "$REPORT"
 
+# Always regenerate the build manifest after environment prep so downstream
+# orchestration has a fresh inventory even on soft failures.
 python3 - "$RUN_ROOT" "$BUILD_OUT_DIR" "$DIST_OUT_DIR" "$BUILD_MANIFEST" <<'PY'
 import json
 import os
